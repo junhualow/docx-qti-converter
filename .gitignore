@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Generated files
+jobs/
+output/
+uploads/
+
+# zip output
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
