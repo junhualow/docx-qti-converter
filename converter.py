@@ -3,11 +3,13 @@ from docx.oxml.ns import qn
 import os
 import re
 
-def convert_docx_to_qti(input_docx):
+def convert_docx_to_qti(input_docx, job_dir):
 
     doc = Document(input_docx)
 
-    os.makedirs("output/assets", exist_ok=True)
+    assets_dir = os.path.join(job_dir, "assets")
+    items_dir = os.path.join(job_dir, "items")
+    os.makedirs(assets_dir, exist_ok=True)
 
     # -----------------------------
     # IMAGE HANDLING
@@ -18,7 +20,7 @@ def convert_docx_to_qti(input_docx):
         nonlocal image_counter
         image_part = doc.part.related_parts[rId]
         filename = f"img_{image_counter}.jpg"
-        with open(f"output/assets/{filename}", "wb") as f:
+        with open(os.path.join(assets_dir, filename), "wb") as f:
             f.write(image_part.blob)
         image_counter += 1
         return filename
@@ -262,7 +264,7 @@ def convert_docx_to_qti(input_docx):
     import string
     import xml.sax.saxutils as saxutils
 
-    os.makedirs("output/items", exist_ok=True)
+    os.makedirs(items_dir, exist_ok=True)
 
     def random_id(length=3):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -348,7 +350,7 @@ def convert_docx_to_qti(input_docx):
 
         item_id = f"Q{int(q['qnum']):03d}_{random_id()}"
 
-        filename = f"output/items/{item_id}.xml"
+        filename = os.path.join(items_dir, f"{item_id}.xml")
 
         stem_html = tokens_to_html(q["tokens"])
 
@@ -412,15 +414,13 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
     # STRUCTURED QUESTIONS → QTI
     # -----------------------------
     for q in structured_questions:
-
         answer_text = "None"
 
         if q["qnum"] in answers:
             answer_text = answer_tokens_to_string(answers[q["qnum"]])
 
         item_id = f"Q{int(q['qnum']):03d}_{random_id()}"
-
-        filename = f"output/items/{item_id}.xml"
+        filename = os.path.join(items_dir, f"{item_id}.xml")
 
         stem_html = tokens_to_html(q["tokens"])
 
@@ -475,7 +475,7 @@ identifier="TEST1" title="Converted Test" xsi:schemaLocation="http://www.imsglob
 </assessmentTest>
 '''
 
-    with open("output/assessment_test.xml","w") as f:
+    with open(os.path.join(job_dir, "assessment_test.xml"),"w") as f:
         f.write(assessment_xml)
 
     # -----------------------------
@@ -525,22 +525,24 @@ http://www.imsglobal.org/xsd/imsqti_metadata_v2p1 http://www.imsglobal.org/xsd/q
 </manifest>
 '''
 
-    with open("output/imsmanifest.xml", "w", encoding="utf-8") as f:
+    with open(os.path.join(job_dir, "imsmanifest.xml"), "w", encoding="utf-8") as f:
         f.write(manifest)
 
     # -----------------------------
     # ZIP QTI PACKAGE
     # -----------------------------
-    zipf = zipfile.ZipFile("qti_package.zip", "w")
+    zip_path = os.path.join(job_dir, "qti_package.zip")
+    zipf = zipfile.ZipFile(zip_path, "w")
 
-    for root, dirs, files in os.walk("output"):
+    for root, dirs, files in os.walk(job_dir):
         for file in files:
+            if file.endswith(".zip"):
+                continue
             path = os.path.join(root, file)
-            arcname = os.path.relpath(path, "output")
+            arcname = os.path.relpath(path, job_dir)
             zipf.write(path, arcname)
 
     zipf.close()
 
-    print("QTI 2.1 package created: qti_package.zip")
-
-    return "qti_package.zip"
+    print(f"QTI 2.1 package created: {zip_path}")
+    return zip_path

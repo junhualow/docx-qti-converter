@@ -1,11 +1,182 @@
-<h2>DOCX → QTI 2.1 Converter</h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DOCX → QTI Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            padding: 40px;
+        }
 
-<form action="/convert" method="post" enctype="multipart/form-data">
+        .container {
+            width: 600px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.1);
+        }
 
-<input type="file" name="file" required>
+        h1 {
+            text-align: center;
+        }
 
-<button type="submit">
-Convert
-</button>
+        .drop-zone {
+            border: 2px dashed #2563eb;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            color: #2563eb;
+            margin-top: 20px;
+            cursor: pointer;
+        }
 
-</form>
+        .drop-zone.dragover {
+            background: #eef2ff;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #spinner {
+            display: none;
+            margin-top: 15px;
+        }
+
+        #message {
+            margin-top: 15px;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .download-btn {
+            background: #16a34a;
+        }
+
+        .instructions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+
+        .instructions img {
+            width: 100%;
+            border: 1px solid #ccc;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>DOCX to QTI 2.1 Converter</h1>
+
+    <form id="uploadForm">
+        <div id="dropZone" class="drop-zone">
+            Drag & drop your .docx file here<br>
+            or click to select
+        </div>
+
+        <input type="file" id="fileInput" accept=".docx" hidden>
+        <button type="submit">Convert</button>
+    </form>
+
+    <div id="spinner">⏳ Converting... please wait</div>
+    <div id="message"></div>
+
+    <div class="instructions">
+        <h2>How to format your document</h2>
+        <ul>
+            <li>Start each question with a number (e.g. <b>1 What is...</b>)</li>
+            <li>Images with text overlay should be "cleaned up" by replacing the affected images with screenshots.</li>
+            <li>MCQ options should be labelled with <b>A B C D</b></li>
+            <li>Structured questions will be extracted as a whole (including parts/subparts).</li>
+            <li>Indents (e.g., a), (i), etc) should not be used; replace them with plain text instead.</li>
+            <li>If you have answers to the questions, append them at the bottom of the document and begin the answer segment with capitalised text "ANSWERS".</li>
+            <li>Answers for parts/subparts should begin with the question number for the first part/subpart but not the subsequent parts/subparts. Refer to sample document question 4's answers - "4" only appears once.</li>
+        </ul>
+
+        <p>Example of a supported document format:</p>
+
+        <img src="{{ url_for('static', filename='sample_doc.png') }}" alt="Sample document">
+    </div>
+</div>
+
+<script>
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+
+dropZone.addEventListener("click", () => fileInput.click());
+
+dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    fileInput.files = e.dataTransfer.files;
+});
+
+document.getElementById("uploadForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const spinner = document.getElementById("spinner");
+    const message = document.getElementById("message");
+
+    message.innerHTML = "";
+    spinner.style.display = "block";
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    try {
+        const response = await fetch("/convert", {
+            method: "POST",
+            body: formData
+        });
+
+        spinner.style.display = "none";
+
+        if (!response.ok) {
+            const data = await response.json();
+            message.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+
+        message.innerHTML = `
+            <p>✅ Conversion complete</p>
+            <a href="${url}" download="converted_qti.zip">
+                <button class="download-btn">Download QTI Package</button>
+            </a>
+        `;
+    } catch (err) {
+        spinner.style.display = "none";
+        message.innerHTML = `<div class="error">Server error. Please try again.</div>`;
+    }
+});
+</script>
+
+</body>
+</html>
