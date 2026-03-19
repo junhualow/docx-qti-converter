@@ -3,98 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <title>DOCX → QTI Converter</title>
+
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+            background: #f5f7fb;
+            margin: 0;
+            padding: 40px 0;
             display: flex;
             justify-content: center;
-            padding: 40px;
         }
 
         .container {
-            width: 600px;
+            width: 760px;
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.1);
+            padding: 30px 40px;
+            border-radius: 14px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
         }
 
         h1 {
             text-align: center;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 25px;
         }
 
         .drop-zone {
-            border: 2px dashed #2563eb;
-            border-radius: 10px;
-            padding: 40px;
+            border: 2px dashed #3b82f6;
+            border-radius: 12px;
+            padding: 45px;
             text-align: center;
-            color: #2563eb;
-            margin-top: 20px;
+            color: #3b82f6;
+            font-size: 18px;
             cursor: pointer;
+            transition: 0.2s;
         }
 
         .drop-zone.dragover {
             background: #eef2ff;
         }
 
+        .drop-zone.has-file {
+            border-style: solid;
+            color: #111;
+        }
+
+        .filename {
+            margin-top: 10px;
+            font-size: 15px;
+            color: #111;
+        }
+
         button {
-            margin-top: 15px;
-            padding: 10px 20px;
+            margin-top: 20px;
+            width: 100%;
+            padding: 12px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             background: #2563eb;
             color: white;
-            font-size: 16px;
+            font-size: 17px;
             cursor: pointer;
+        }
+
+        button:hover {
+            background: #1e4ed8;
         }
 
         #spinner {
             display: none;
+            text-align: center;
             margin-top: 15px;
         }
 
         #message {
-            margin-top: 15px;
+            margin-top: 20px;
+            text-align: center;
         }
 
         .error {
-            color: red;
-        }
-
-        .download-btn {
-            background: #16a34a;
+            color: #dc2626;
         }
 
         .instructions {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
+            margin-top: 40px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 30px;
         }
 
-        .instructions img {
+        .sample-container {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .sample-container img {
             width: 100%;
-            border: 1px solid #ccc;
-            margin-top: 10px;
+            max-height: 500px;
+            object-fit: contain;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: zoom-in;
+        }
+
+        /* Zoom modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal img {
+            max-width: 90%;
+            max-height: 90%;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>DOCX to QTI 2.1 Converter</h1>
+    <h1>DOCX → QTI Converter</h1>
+    <div class="subtitle">Upload a formatted Word document and get a ready‑to‑import QTI package</div>
 
     <form id="uploadForm">
         <div id="dropZone" class="drop-zone">
             Drag & drop your .docx file here<br>
             or click to select
+            <div id="fileName" class="filename"></div>
         </div>
 
         <input type="file" id="fileInput" accept=".docx" hidden>
-        <button type="submit">Convert</button>
+        <button type="submit">Convert Document</button>
     </form>
 
-    <div id="spinner">⏳ Converting... please wait</div>
+    <div id="spinner">⏳ Converting… please wait</div>
     <div id="message"></div>
 
     <div class="instructions">
@@ -105,23 +156,34 @@
             <li>MCQ options should be labelled with <b>A B C D</b></li>
             <li>Structured questions will be extracted as a whole (including parts/subparts).</li>
             <li>Indents (e.g., a), (i), etc) should not be used; replace them with plain text instead.</li>
-            <li>If you have answers to the questions, append them at the bottom of the document and begin the answer segment with capitalised text "ANSWERS".</li>
-            <li>Answers for parts/subparts should begin with the question number for the first part/subpart but not the subsequent parts/subparts. Refer to sample document question 4's answers - "4" only appears once.</li>
+            <li>If you have answers to the questions, append them at the bottom of the document and begin the answer segment with capitalised text <b>ANSWERS</b>.</li>
+            <li>Answers for parts/subparts should begin with the question number for the first part/subpart but not the subsequent parts/subparts. Refer to sample document question 4's answers — <b>"4"</b> only appears once.</li>
         </ul>
 
-        <p>Example of a supported document format:</p>
-
-        <img src="{{ url_for('static', filename='sample_doc.png') }}" alt="Sample document">
+        <div class="sample-container">
+            <img id="sampleImage"
+                 src="{{ url_for('static', filename='sample_doc.png') }}"
+                 alt="Sample document">
+            <div style="font-size:13px;color:#666;margin-top:6px;">
+                Click image to zoom
+            </div>
+        </div>
     </div>
+</div>
+
+<!-- Zoom modal -->
+<div id="imageModal" class="modal">
+    <img id="modalImg">
 </div>
 
 <script>
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
+const fileName = document.getElementById("fileName");
 
 dropZone.addEventListener("click", () => fileInput.click());
 
-dropZone.addEventListener("dragover", (e) => {
+dropZone.addEventListener("dragover", e => {
     e.preventDefault();
     dropZone.classList.add("dragover");
 });
@@ -130,20 +192,31 @@ dropZone.addEventListener("dragleave", () => {
     dropZone.classList.remove("dragover");
 });
 
-dropZone.addEventListener("drop", (e) => {
+dropZone.addEventListener("drop", e => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
     fileInput.files = e.dataTransfer.files;
+    updateFileName();
 });
 
+fileInput.addEventListener("change", updateFileName);
+
+function updateFileName() {
+    if (fileInput.files.length > 0) {
+        fileName.textContent = "Selected: " + fileInput.files[0].name;
+        dropZone.classList.add("has-file");
+    }
+}
+
+/* Auto download after conversion */
 document.getElementById("uploadForm").addEventListener("submit", async function(e) {
     e.preventDefault();
 
     const spinner = document.getElementById("spinner");
     const message = document.getElementById("message");
 
-    message.innerHTML = "";
     spinner.style.display = "block";
+    message.innerHTML = "";
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
@@ -165,17 +238,35 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
 
-        message.innerHTML = `
-            <p>✅ Conversion complete</p>
-            <a href="${url}" download="converted_qti.zip">
-                <button class="download-btn">Download QTI Package</button>
-            </a>
-        `;
-    } catch (err) {
+        // Auto-download
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "converted_qti.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        message.innerHTML = "✅ Download started automatically";
+
+    } catch {
         spinner.style.display = "none";
         message.innerHTML = `<div class="error">Server error. Please try again.</div>`;
     }
 });
+
+/* Click-to-zoom image */
+const modal = document.getElementById("imageModal");
+const modalImg = document.getElementById("modalImg");
+const sampleImage = document.getElementById("sampleImage");
+
+sampleImage.onclick = () => {
+    modal.style.display = "flex";
+    modalImg.src = sampleImage.src;
+};
+
+modal.onclick = () => {
+    modal.style.display = "none";
+};
 </script>
 
 </body>
