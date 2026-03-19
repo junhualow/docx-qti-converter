@@ -536,7 +536,7 @@ http://www.imsglobal.org/xsd/imsqti_metadata_v2p1 http://www.imsglobal.org/xsd/q
 
     for root, dirs, files in os.walk(job_dir):
         for file in files:
-            if file.endswith(".zip"):
+            if file.endswith((".zip",".docx")):
                 continue
             path = os.path.join(root, file)
             arcname = os.path.relpath(path, job_dir)
