@@ -2,18 +2,22 @@ from docx import Document
 from docx.oxml.ns import qn
 import os
 import re
+import zipfile
+import random
+import string
+import xml.sax.saxutils as saxutils
 
-def convert_docx_to_qti(input_docx, job_dir):
-
+def parse_docx_to_data(input_docx, job_dir):
+    """
+    Parses a DOCX file and extracts questions, options, and answers.
+    It combines logic for both standard text paragraphs and table-based layouts.
+    Returns a dictionary suitable for JSON serialization (Preview).
+    """
     doc = Document(input_docx)
 
     assets_dir = os.path.join(job_dir, "assets")
-    items_dir = os.path.join(job_dir, "items")
     os.makedirs(assets_dir, exist_ok=True)
 
-    # -----------------------------
-    # IMAGE HANDLING
-    # -----------------------------
     image_counter = 0
 
     def save_image(doc, rId):
@@ -25,246 +29,243 @@ def convert_docx_to_qti(input_docx, job_dir):
         image_counter += 1
         return filename
 
-    # -----------------------------
-    # ITERATE WORD CONTENT
-    # -----------------------------
+    # Regex Patterns
+    question_regex = re.compile(r'^(\d+)(?:\s+(.*))?$', re.I)
+    option_regex = re.compile(r'^[A-D][\.\)]\s*(.*)')
+
+    list_counters = {}
+    
+    def get_roman(num):
+        val = [10, 9, 5, 4, 1]
+        syb = ["x", "ix", "v", "iv", "i"]
+        roman_num = ''
+        i = 0
+        while num > 0:
+            for _ in range(num // val[i]):
+                roman_num += syb[i]
+                num -= val[i]
+            i += 1
+        return roman_num
+
+    def parse_paragraph(child):
+        tokens = []
+        for run in child.xpath("./w:r"):
+            text = "".join(node.text or "" for node in run.xpath(".//w:t"))
+            if not text:
+                continue
+            is_sup = run.xpath(".//w:vertAlign[@w:val='superscript']")
+            is_sub = run.xpath(".//w:vertAlign[@w:val='subscript']")
+            is_bold = run.xpath(".//w:b")
+            is_italic = run.xpath(".//w:i")
+            if is_sup: text = f"<sup>{text}</sup>"
+            if is_sub: text = f"<sub>{text}</sub>"
+            if is_bold: text = f"<strong>{text}</strong>"
+            if is_italic: text = f"<em>{text}</em>"
+            tokens.append(text)
+            
+        paragraph_text = "".join(tokens).strip()
+
+        # Handle numbering (lists)
+        numPr = child.xpath(".//w:numPr")
+        if numPr and paragraph_text:
+            numId_node = numPr[0].xpath(".//w:numId/@w:val")
+            ilvl_node = numPr[0].xpath(".//w:ilvl/@w:val")
+            if numId_node:
+                numId = numId_node[0]
+                ilvl = ilvl_node[0] if ilvl_node else "0"
+                list_key = f"{numId}_{ilvl}"
+                
+                if list_key not in list_counters:
+                    list_counters[list_key] = 1
+                else:
+                    list_counters[list_key] += 1
+                
+                roman = get_roman(list_counters[list_key])
+                paragraph_text = f"{roman}. {paragraph_text}"
+        
+        alignment = child.xpath(".//w:jc/@w:val")
+        align_val = alignment[0] if alignment else None
+
+        if paragraph_text:
+            yield ["text", paragraph_text, align_val]
+
+        for node in child.iter():
+            if node.tag.endswith('blip'):
+                rId = node.get(qn('r:embed'))
+                if rId:
+                    yield ["image", rId, align_val]
+
+    def parse_table(child):
+        table_data = []
+        for row in child.xpath("./w:tr"):
+            row_data = []
+            for cell in row.xpath("./w:tc"):
+                cell_text = "".join(node.text or "" for node in cell.xpath(".//w:t")).strip()
+                row_data.append(cell_text)
+            table_data.append(row_data)
+        return table_data
+
     def iter_block_items(doc):
         body = doc.element.body
+        
         for child in body.iterchildren():
-
-            # -----------------------------
-            # PARAGRAPH
-            # -----------------------------
             if child.tag.endswith('p'):
+                yield from parse_paragraph(child)
+            elif child.tag.endswith('tbl'):
+                # Detect if table is used for formatting/layout (e.g., column 1 is question number)
+                is_layout = False
+                for row in child.xpath("./w:tr"):
+                    cells = row.xpath("./w:tc")
+                    if len(cells) >= 2:
+                        first_cell_text = "".join(node.text or "" for node in cells[0].xpath(".//w:t")).strip()
+                        if re.match(r'^\d+[a-zA-Z]*[ivxlcdm]*\.?$', first_cell_text, re.I):
+                            is_layout = True
+                            break
+                
+                if is_layout:
+                    # Unwrap the layout table into linear blocks so the standard parser can process it
+                    current_prefix = ""
+                    for row in child.xpath("./w:tr"):
+                        cells = row.xpath("./w:tc")
+                        if len(cells) >= 2:
+                            first_cell_text = "".join(node.text or "" for node in cells[0].xpath(".//w:t")).strip()
+                            
+                            if first_cell_text:
+                                digit_match = re.match(r'^(\d+)', first_cell_text)
+                                if digit_match:
+                                    current_prefix = digit_match.group(1)
+                                    letter_part = first_cell_text[len(current_prefix):].strip().rstrip('.')
+                                    
+                                    yield ["text", current_prefix, None]
+                                    
+                                    if letter_part:
+                                        yield ["text", f"({letter_part})", None]
+                                        
+                                elif current_prefix and re.match(r'^[a-zA-Z]+[ivxlcdm]*\.?$', first_cell_text, re.I):
+                                    letter_part = first_cell_text.strip().rstrip('.')
+                                    yield ["text", f"({letter_part})", None]
+                                else:
+                                    # if it doesn't match normal layouts but has text, just yield it
+                                    yield ["text", first_cell_text, None]
 
-                tokens = []
+                            # Clear counters for the new cell so numbering restarts at i.
+                            list_counters.clear()
+                            
+                            # Yield contents of the second cell sequentially
+                            for cell_child in cells[1].iterchildren():
+                                if cell_child.tag.endswith('p'):
+                                    yield from parse_paragraph(cell_child)
+                                elif cell_child.tag.endswith('tbl'):
+                                    yield ["table", parse_table(cell_child)]
+                else:
+                    yield ["table", parse_table(child)]
 
-                for run in child.xpath("./w:r"):
-
-                    text = "".join(
-                        node.text or ""
-                        for node in run.xpath(".//w:t")
-                    )
-
-                    if not text:
-                        continue
-
-                    is_sup = run.xpath(".//w:vertAlign[@w:val='superscript']")
-                    is_sub = run.xpath(".//w:vertAlign[@w:val='subscript']")
-                    is_bold = run.xpath(".//w:b")
-                    is_italic = run.xpath(".//w:i")
-
-                    if is_sup:
-                        text = f"<sup>{text}</sup>"
-                    if is_sub:
-                        text = f"<sub>{text}</sub>"
-                    if is_bold:
-                        text = f"<strong>{text}</strong>"
-                    if is_italic:
-                        text = f"<em>{text}</em>"
-
-                    tokens.append(text)
-
-                paragraph_text = "".join(tokens).strip()
-
-                if paragraph_text:
-                    yield ("text", paragraph_text)
-
-                for node in child.iter():
-                    if node.tag.endswith('blip'):
-                        rId = node.get(qn('r:embed'))
-                        yield ("image", rId)
-
-            # -----------------------------
-            # TABLE
-            # -----------------------------
-            if child.tag.endswith('tbl'):
-
-                table_data = []
-
-                for row in child.xpath(".//w:tr"):
-
-                    row_data = []
-
-                    for cell in row.xpath(".//w:tc"):
-
-                        cell_text = "".join(
-                            node.text or ""
-                            for node in cell.xpath(".//w:t")
-                        ).strip()
-
-                        row_data.append(cell_text)
-
-                    table_data.append(row_data)
-
-                yield ("table", table_data)
-
-    # -----------------------------
-    # TABLE OPTION EXTRACTION
-    # -----------------------------
-    def extract_table_options(table):
-        options = []
-        for row in table:
-            for cell in row:
-                cell = cell.strip()
-                if cell:
-                    options.append(cell)
-        return options
-
-    # -----------------------------
-    # REGEX PATTERNS (STRICT)
-    # -----------------------------
-    question_regex = re.compile(r'^(\d+)\s+(.*)')
-    option_regex = re.compile(r'^[A-D][\.\)]\s*(.*)')
-    part_regex = re.compile(r'^\(([a-z])\)\s*(.*)', re.I)
-    subpart_regex = re.compile(r'^\(([ivxlcdm]+)\)\s*(.*)', re.I)
-    marks_regex = re.compile(r'\[(\d+)\]')
-
-    # -----------------------------
-    # STORAGE
-    # -----------------------------
     mcq_questions = []
     structured_questions = []
-
+    answers = {}
+    
     current_qnum = None
     current_tokens = []
     options = []
-
-    answers = {}
+    
     reading_answers = False
-
     current_answer_q = None
     current_answer_tokens = []
 
-    # -----------------------------
-    # PARSE DOCUMENT
-    # -----------------------------
-    for item_type, value in iter_block_items(doc):
+    for item in iter_block_items(doc):
+        item_type = item[0]
+        value = item[1]
+        align_val = item[2] if len(item) > 2 else None
 
         if reading_answers:
-
             if item_type == "image" and current_answer_q is not None:
                 filename = save_image(doc, value)
-                current_answer_tokens.append(("image", filename))
+                current_answer_tokens.append(["image", filename])
                 continue
-
             if item_type == "table":
-                current_answer_tokens.append(("table", value))
+                current_answer_tokens.append(["table", value])
                 continue
-
             if item_type == "text":
-
                 text = value.replace('\xa0',' ').strip()
-
-                amatch = re.match(r'^(\d+)', text)
-
+                amatch = re.match(r'^(\d+[a-zA-Z]*[ivxlcdm]*)\.?\s*(.*)', text, re.I)
                 if amatch:
-
                     if current_answer_q is not None:
                         answers[current_answer_q] = current_answer_tokens
-
                     current_answer_q = amatch.group(1)
-
-                    cleaned = re.sub(r'^\d+\s*', '', text)
-
+                    cleaned = amatch.group(2).strip()
                     current_answer_tokens = []
-
                     if cleaned:
-                        current_answer_tokens.append(("text", cleaned))
-
+                        current_answer_tokens.append(["text", cleaned, align_val])
                 else:
-
                     if current_answer_q is not None:
-                        current_answer_tokens.append(("text", text))
-
+                        current_answer_tokens.append(["text", text, align_val])
             continue
 
         if item_type == "image":
-
             filename = save_image(doc, value)
-            current_tokens.append(("image", filename))
+            current_tokens.append(["image", filename, align_val])
             continue
-
         if item_type == "table":
-
-            current_tokens.append(("table", value))
+            current_tokens.append(["table", value])
             continue
 
         if item_type == "text":
-
             text = value.replace('\xa0', ' ').replace('\t', ' ')
             text = re.sub(r'\s+', ' ', text).strip()
 
             if text.upper() == "ANSWERS":
                 reading_answers = True
                 continue
-
             if not text:
                 continue
 
             qmatch = question_regex.match(text)
-
             if qmatch:
-
                 if current_qnum is not None:
-
                     if options:
-                        mcq_questions.append({
-                            "qnum": current_qnum,
-                            "tokens": current_tokens,
-                            "options": options
-                        })
-
+                        mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
                     else:
-                        structured_questions.append({
-                            "qnum": current_qnum,
-                            "tokens": current_tokens
-                        })
-
+                        structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
+                
                 current_qnum = qmatch.group(1)
-
-                current_tokens = [
-                    ("text", qmatch.group(2))
-                ]
-
+                current_tokens = []
+                if qmatch.group(2):
+                    current_tokens.append(["text", qmatch.group(2), align_val])
                 options = []
-
                 continue
 
             opt = option_regex.match(text)
-
             if opt:
                 options.append(opt.group(1))
                 continue
 
-            current_tokens.append(("text", text))
+            current_tokens.append(["text", text, align_val])
 
     if current_answer_q is not None:
         answers[current_answer_q] = current_answer_tokens
-
     if current_qnum is not None:
-
         if options:
-            mcq_questions.append({
-                "qnum": current_qnum,
-                "tokens": current_tokens,
-                "options": options
-            })
+            mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
         else:
-            structured_questions.append({
-                "qnum": current_qnum,
-                "tokens": current_tokens
-            })
+            structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
 
-    # -----------------------------
-    # QTI 2.1 OUTPUT GENERATION
-    # -----------------------------
-    import zipfile
-    import random
-    import string
-    import xml.sax.saxutils as saxutils
+    return {
+        "mcq_questions": mcq_questions,
+        "structured_questions": structured_questions,
+        "answers": answers
+    }
 
+
+def generate_qti_from_data(data, job_dir):
+    """
+    Takes the JSON structured data and generates the QTI 2.1 package zip.
+    """
+    items_dir = os.path.join(job_dir, "items")
     os.makedirs(items_dir, exist_ok=True)
+
+    mcq_questions = data.get("mcq_questions", [])
+    structured_questions = data.get("structured_questions", [])
+    answers = data.get("answers", {})
 
     def random_id(length=3):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -279,22 +280,33 @@ def convert_docx_to_qti(input_docx, job_dir):
 
         html = ""
 
-        for ttype, val in tokens:
+        for t in tokens:
+            ttype = t[0]
+            val = t[1]
 
             if ttype == "text":
-
+                align_val = t[2] if len(t) > 2 else None
                 safe = saxutils.escape(val)
                 safe = safe.replace("&lt;","<").replace("&gt;",">")
 
-                html += f"<div>{safe}</div>\n"
+                if align_val == "center":
+                    html += f"<div style='text-align:center'>{safe}</div>\n"
+                elif align_val == "right":
+                    html += f"<div style='text-align:right'>{safe}</div>\n"
+                elif align_val == "both":
+                    html += f"<div style='text-align:justify'>{safe}</div>\n"
+                else:
+                    html += f"<div>{safe}</div>\n"
 
             elif ttype == "image":
-
-                html += f'''
-<div>
-<img alt="diagram" src="../assets/{val}"/>
-</div>
-'''
+                align_val = t[2] if len(t) > 2 else None
+                
+                if align_val == "center":
+                    html += f"<div style='text-align:center'>\n<img alt=\"diagram\" src=\"../assets/{val}\"/>\n</div>\n"
+                elif align_val == "right":
+                    html += f"<div style='text-align:right'>\n<img alt=\"diagram\" src=\"../assets/{val}\"/>\n</div>\n"
+                else:
+                    html += f"<div>\n<img alt=\"diagram\" src=\"../assets/{val}\"/>\n</div>\n"
 
             elif ttype == "table":
 
@@ -323,7 +335,9 @@ def convert_docx_to_qti(input_docx, job_dir):
 
         result = ""
 
-        for ttype, val in tokens:
+        for t in tokens:
+            ttype = t[0]
+            val = t[1]
 
             if ttype == "text":
                 result += val + " "
@@ -339,16 +353,20 @@ def convert_docx_to_qti(input_docx, job_dir):
     letters = ["a","b","c","d","e","f"]
 
     # -----------------------------
-    # MCQ QUESTIONS → QTI
+    # MCQ QUESTIONS -> QTI
     # -----------------------------
     for q in mcq_questions:
 
         answer_text = "None"
+        qnum_str = str(q["qnum"])
 
-        if q["qnum"] in answers:
-            answer_text = answer_tokens_to_string(answers[q["qnum"]])
+        if qnum_str in answers:
+            answer_text = answer_tokens_to_string(answers[qnum_str])
 
-        item_id = f"Q{int(q['qnum']):03d}_{random_id()}"
+        num_match = re.search(r'\d+', qnum_str)
+        qnum_int = int(num_match.group()) if num_match else 0
+
+        item_id = f"Q{qnum_int:03d}_{random_id()}"
 
         filename = os.path.join(items_dir, f"{item_id}.xml")
 
@@ -356,9 +374,9 @@ def convert_docx_to_qti(input_docx, job_dir):
 
         title_text = ""
 
-        for ttype, val in q["tokens"]:
-            if ttype == "text":
-                title_text = val[:70]
+        for t in q["tokens"]:
+            if t[0] == "text":
+                title_text = t[1][:70]
                 break
 
         safe_title = saxutils.escape(title_text)
@@ -368,7 +386,7 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 adaptive="false"
 identifier="{item_id}"
 timeDependent="false"
-title="Q{int(q['qnum']):03d} {safe_title}"
+title="Q{qnum_str} {safe_title}"
 xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsglobal.org/xsd/qti/qtiv2p1/imsqti_v2p1.xsd">
 <responseDeclaration identifier="RESPONSE" cardinality="single" baseType="identifier">
 <correctResponse>
@@ -406,20 +424,24 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
 
         item_refs.append(item_id)
 
-        imgs = [v for t,v in q["tokens"] if t=="image"]
+        imgs = [v for t in q["tokens"] if t[0]=="image" for v in [t[1]]]
 
         item_images[item_id] = imgs
 
     # -----------------------------
-    # STRUCTURED QUESTIONS → QTI
+    # STRUCTURED QUESTIONS -> QTI
     # -----------------------------
     for q in structured_questions:
         answer_text = "None"
+        qnum_str = str(q["qnum"])
 
-        if q["qnum"] in answers:
-            answer_text = answer_tokens_to_string(answers[q["qnum"]])
+        if qnum_str in answers:
+            answer_text = answer_tokens_to_string(answers[qnum_str])
 
-        item_id = f"Q{int(q['qnum']):03d}_{random_id()}"
+        num_match = re.search(r'\d+', qnum_str)
+        qnum_int = int(num_match.group()) if num_match else 0
+
+        item_id = f"Q{qnum_int:03d}_{random_id()}"
         filename = os.path.join(items_dir, f"{item_id}.xml")
 
         stem_html = tokens_to_html(q["tokens"])
@@ -429,7 +451,7 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 adaptive="false"
 identifier="{item_id}"
 timeDependent="false"
-title="Q{int(q['qnum']):03d}"
+title="Q{qnum_str}"
 xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsglobal.org/xsd/qti/qtiv2p1/imsqti_v2p1.xsd">
 <responseDeclaration identifier="RESPONSE" cardinality="single" baseType="string"/>
 <correctResponse>
@@ -451,7 +473,7 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
 
         item_refs.append(item_id)
 
-        imgs = [v for t,v in q["tokens"] if t=="image"]
+        imgs = [v for t in q["tokens"] if t[0]=="image" for v in [t[1]]]
 
         item_images[item_id] = imgs
 
@@ -544,5 +566,4 @@ http://www.imsglobal.org/xsd/imsqti_metadata_v2p1 http://www.imsglobal.org/xsd/q
 
     zipf.close()
 
-    print(f"QTI 2.1 package created: {zip_path}")
     return zip_path

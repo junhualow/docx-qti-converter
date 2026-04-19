@@ -1,17 +1,18 @@
 import os
 import uuid
 import shutil
-from flask import Flask, render_template, request, send_file, after_this_request
+from flask import Flask, render_template, request, send_file, after_this_request, jsonify
 from werkzeug.utils import secure_filename
-from converter import convert_docx_to_qti
+from converter import parse_docx_to_data, generate_qti_from_data
 
 app = Flask(__name__)
 
 MAX_SIZE = 10 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = MAX_SIZE
 
-BASE_UPLOAD = "jobs"
-os.makedirs(BASE_UPLOAD, exist_ok=True)
+# We use the static folder to store temporary jobs so the frontend can access extracted images
+STATIC_JOBS = os.path.join(app.static_folder, "jobs") if app.static_folder else os.path.join("static", "jobs")
+os.makedirs(STATIC_JOBS, exist_ok=True)
 
 def allowed_file(filename):
     return filename.lower().endswith(".docx")
@@ -20,8 +21,8 @@ def allowed_file(filename):
 def index():
     return render_template("index.html")
 
-@app.route("/convert", methods=["POST"])
-def convert():
+@app.route("/upload", methods=["POST"])
+def upload():
     if "file" not in request.files:
         return {"error": "No file part in request"}, 400
 
@@ -34,8 +35,8 @@ def convert():
         return {"error": "Only .docx files are allowed"}, 400
 
     job_id = str(uuid.uuid4())
-    job_dir = os.path.join(BASE_UPLOAD, job_id)
-    os.makedirs(job_dir)
+    job_dir = os.path.join(STATIC_JOBS, job_id)
+    os.makedirs(job_dir, exist_ok=True)
 
     safe_name = secure_filename(file.filename)
     input_path = os.path.join(job_dir, safe_name)
@@ -46,9 +47,28 @@ def convert():
         return {"error": "File exceeds 10MB limit"}, 400
 
     try:
-        zip_path = convert_docx_to_qti(input_path, job_dir)
+        data = parse_docx_to_data(input_path, job_dir)
+        data['job_id'] = job_id
+        return jsonify(data)
     except Exception as e:
         shutil.rmtree(job_dir, ignore_errors=True)
+        return {"error": str(e)}, 500
+
+@app.route("/convert", methods=["POST"])
+def convert():
+    data = request.json
+    if not data or "job_id" not in data:
+        return {"error": "Invalid data"}, 400
+
+    job_id = data['job_id']
+    job_dir = os.path.join(STATIC_JOBS, job_id)
+    
+    if not os.path.exists(job_dir):
+        return {"error": "Job directory not found. Please upload again."}, 404
+
+    try:
+        zip_path = generate_qti_from_data(data, job_dir)
+    except Exception as e:
         return {"error": str(e)}, 500
 
     @after_this_request
@@ -65,3 +85,6 @@ def convert():
         download_name="converted_qti.zip",
         mimetype="application/zip"
     )
+
+if __name__ == "__main__":
+    app.run(debug=True)

@@ -126,13 +126,23 @@
             max-width: 90%;
             max-height: 90%;
         }
+
+        /* Preview styles */
+        .question-card { border-left: 4px solid #3b82f6; background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .question-card p { overflow-wrap: break-word; word-break: break-word; }
+        .question-card img { max-width: 100%; border-radius: 4px; }
+        .question-card table { border-collapse: collapse; width: 100%; margin: 10px 0; background: white; }
+        .question-card td, .question-card th { border: 1px solid #d1d5db; padding: 8px; }
+        .options-list { list-style-type: none; padding: 0; }
+        .options-list li { padding: 8px; background: white; margin-bottom: 4px; border-radius: 4px; border: 1px solid #e5e7eb; }
+        .answer-box { background: #dcfce7; padding: 12px; border-radius: 4px; color: #166534; font-weight: 500; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>DOCX → QTI Converter</h1>
-    <div class="subtitle">Upload a formatted Word document and get a ready‑to‑import QTI package</div>
+    <div class="subtitle">Upload a formatted Word document, preview the extraction, and download a QTI package</div>
 
     <form id="uploadForm">
         <div id="dropZone" class="drop-zone">
@@ -142,13 +152,20 @@
         </div>
 
         <input type="file" id="fileInput" accept=".docx" hidden>
-        <button type="submit">Convert Document</button>
+        <button type="submit">Upload & Preview Document</button>
     </form>
 
-    <div id="spinner">⏳ Converting… please wait</div>
+    <div id="spinner">⏳ Processing document… please wait</div>
     <div id="message"></div>
 
-    <div class="instructions">
+    <div id="previewArea" style="display:none; margin-top: 30px;">
+        <h2 style="text-align: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Preview Extracted Content</h2>
+        <div id="previewContent" style="margin-top: 20px;"></div>
+        <button id="confirmBtn" style="background: #10b981; margin-top: 20px;">Confirm & Download QTI</button>
+        <button id="cancelBtn" style="background: #ef4444; margin-top: 10px;">Cancel / Start Over</button>
+    </div>
+
+    <div class="instructions" id="instructionsSection">
         <h2>How to format your document</h2>
         <ul>
             <li>Start each question with a number (e.g. <b>1 What is...</b>)</li>
@@ -180,6 +197,7 @@
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const fileName = document.getElementById("fileName");
+let currentData = null;
 
 dropZone.addEventListener("click", () => fileInput.click());
 
@@ -208,21 +226,22 @@ function updateFileName() {
     }
 }
 
-/* Auto download after conversion */
 document.getElementById("uploadForm").addEventListener("submit", async function(e) {
     e.preventDefault();
+    if (!fileInput.files.length) return alert("Please select a DOCX file first.");
 
     const spinner = document.getElementById("spinner");
     const message = document.getElementById("message");
 
     spinner.style.display = "block";
     message.innerHTML = "";
+    document.getElementById("previewArea").style.display = "none";
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
 
     try {
-        const response = await fetch("/convert", {
+        const response = await fetch("/upload", {
             method: "POST",
             body: formData
         });
@@ -235,22 +254,136 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
             return;
         }
 
+        currentData = await response.json();
+        renderPreview(currentData);
+        
+        // Hide upload form and instructions, show preview
+        document.getElementById("uploadForm").style.display = "none";
+        document.getElementById("instructionsSection").style.display = "none";
+        document.getElementById("previewArea").style.display = "block";
+
+    } catch {
+        spinner.style.display = "none";
+        message.innerHTML = `<div class="error">Server error during parsing. Please try again.</div>`;
+    }
+});
+
+function renderTokens(tokens, jobId) {
+    let html = '';
+    tokens.forEach(t => {
+        if (t[0] === 'text') {
+            let style = '';
+            if (t.length > 2 && t[2]) {
+                if (t[2] === 'center') style = 'text-align: center;';
+                else if (t[2] === 'right') style = 'text-align: right;';
+                else if (t[2] === 'both') style = 'text-align: justify;';
+            }
+            html += `<p style="${style}">${t[1]}</p>`;
+        } else if (t[0] === 'image') {
+            let style = '';
+            if (t.length > 2 && t[2]) {
+                if (t[2] === 'center') style = 'text-align: center;';
+                else if (t[2] === 'right') style = 'text-align: right;';
+            }
+            html += `<div style="${style}"><img src="/static/jobs/${jobId}/assets/${t[1]}" alt="Extracted Image"></div>`;
+        } else if (t[0] === 'table') {
+            html += '<table>';
+            t[1].forEach(row => {
+                html += '<tr>';
+                row.forEach(cell => html += `<td>${cell}</td>`);
+                html += '</tr>';
+            });
+            html += '</table>';
+        }
+    });
+    return html;
+}
+
+function renderPreview(data) {
+    const area = document.getElementById('previewContent');
+    let html = '';
+
+    const allQuestions = [...data.mcq_questions, ...data.structured_questions].sort((a, b) => parseInt(a.qnum) - parseInt(b.qnum));
+
+    if (allQuestions.length === 0) {
+        html = "<p style='text-align:center; color:#666;'>No questions were successfully extracted. Please check the document format.</p>";
+    }
+
+    allQuestions.forEach(q => {
+        html += `<div class="question-card">`;
+        html += `<h3 style="margin-top:0;">Question ${q.qnum}</h3>`;
+        html += renderTokens(q.tokens, data.job_id);
+        
+        if (q.options && q.options.length > 0) {
+            html += `<ul class="options-list">`;
+            q.options.forEach((opt, idx) => {
+                const letter = String.fromCharCode(65 + idx);
+                html += `<li><strong>${letter})</strong> ${opt}</li>`;
+            });
+            html += `</ul>`;
+        }
+
+        if (data.answers[q.qnum]) {
+            const ansHtml = renderTokens(data.answers[q.qnum], data.job_id);
+            html += `<div class="answer-box"><strong>Extracted Answer:</strong> ${ansHtml}</div>`;
+        } else {
+            html += `<div class="answer-box" style="background:#fef08a; color:#854d0e;"><strong>No Answer Extracted</strong></div>`;
+        }
+        
+        html += `</div>`;
+    });
+
+    area.innerHTML = html;
+}
+
+document.getElementById("cancelBtn").addEventListener("click", () => {
+    currentData = null;
+    document.getElementById("uploadForm").style.display = "block";
+    document.getElementById("uploadForm").reset();
+    fileName.textContent = "";
+    dropZone.classList.remove("has-file");
+    document.getElementById("instructionsSection").style.display = "block";
+    document.getElementById("previewArea").style.display = "none";
+    document.getElementById("message").innerHTML = "";
+});
+
+document.getElementById("confirmBtn").addEventListener("click", async function() {
+    const btn = this;
+    const message = document.getElementById("message");
+    btn.innerText = "Generating ZIP...";
+    btn.disabled = true;
+    message.innerHTML = "";
+
+    try {
+        const response = await fetch("/convert", {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentData)
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            message.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
 
-        // Auto-download
         const a = document.createElement("a");
         a.href = url;
-        a.download = "converted_qti.zip";
+        a.download = "qti_package.zip";
         document.body.appendChild(a);
         a.click();
         a.remove();
 
-        message.innerHTML = "✅ Download started automatically";
-
-    } catch {
-        spinner.style.display = "none";
-        message.innerHTML = `<div class="error">Server error. Please try again.</div>`;
+        message.innerHTML = "✅ Download complete! You can upload another file if needed.";
+        
+    } catch (err) {
+        message.innerHTML = `<div class="error">Error generating QTI.</div>`;
+    } finally {
+        btn.innerText = "Confirm & Download QTI";
+        btn.disabled = false;
     }
 });
 
@@ -259,10 +392,12 @@ const modal = document.getElementById("imageModal");
 const modalImg = document.getElementById("modalImg");
 const sampleImage = document.getElementById("sampleImage");
 
-sampleImage.onclick = () => {
-    modal.style.display = "flex";
-    modalImg.src = sampleImage.src;
-};
+if (sampleImage) {
+    sampleImage.onclick = () => {
+        modal.style.display = "flex";
+        modalImg.src = sampleImage.src;
+    };
+}
 
 modal.onclick = () => {
     modal.style.display = "none";
