@@ -6,6 +6,7 @@ import zipfile
 import random
 import string
 import xml.sax.saxutils as saxutils
+import lxml.etree as ET
 
 def parse_docx_to_data(input_docx, job_dir):
     """
@@ -65,24 +66,6 @@ def parse_docx_to_data(input_docx, job_dir):
             
         paragraph_text = "".join(tokens).strip()
 
-        # Handle numbering (lists)
-        numPr = child.xpath(".//w:numPr")
-        if numPr and paragraph_text:
-            numId_node = numPr[0].xpath(".//w:numId/@w:val")
-            ilvl_node = numPr[0].xpath(".//w:ilvl/@w:val")
-            if numId_node:
-                numId = numId_node[0]
-                ilvl = ilvl_node[0] if ilvl_node else "0"
-                list_key = f"{numId}_{ilvl}"
-                
-                if list_key not in list_counters:
-                    list_counters[list_key] = 1
-                else:
-                    list_counters[list_key] += 1
-                
-                roman = get_roman(list_counters[list_key])
-                paragraph_text = f"{roman}. {paragraph_text}"
-        
         alignment = child.xpath(".//w:jc/@w:val")
         align_val = alignment[0] if alignment else None
 
@@ -105,12 +88,90 @@ def parse_docx_to_data(input_docx, job_dir):
             table_data.append(row_data)
         return table_data
 
+    def extract_numbering_map(docx_path):
+        num_map = {}
+        try:
+            with zipfile.ZipFile(docx_path, 'r') as z:
+                if "word/numbering.xml" not in z.namelist():
+                    return num_map
+                num_xml = z.read("word/numbering.xml")
+            root = ET.fromstring(num_xml)
+            namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            
+            abstract_map = {}
+            for abstractNum in root.xpath('//w:abstractNum', namespaces=namespaces):
+                abs_id = abstractNum.get('{' + namespaces['w'] + '}abstractNumId')
+                levels = {}
+                for lvl in abstractNum.xpath('./w:lvl', namespaces=namespaces):
+                    ilvl = lvl.get('{' + namespaces['w'] + '}ilvl')
+                    numFmt = lvl.xpath('./w:numFmt', namespaces=namespaces)
+                    fmt_val = numFmt[0].get('{' + namespaces['w'] + '}val') if numFmt else "decimal"
+                    lvlText = lvl.xpath('./w:lvlText', namespaces=namespaces)
+                    txt_val = lvlText[0].get('{' + namespaces['w'] + '}val') if lvlText else "%1."
+                    levels[ilvl] = (fmt_val, txt_val)
+                abstract_map[abs_id] = levels
+                
+            for num in root.xpath('//w:num', namespaces=namespaces):
+                num_id = num.get('{' + namespaces['w'] + '}numId')
+                abs_num_id = num.xpath('./w:abstractNumId', namespaces=namespaces)
+                if abs_num_id:
+                    abs_val = abs_num_id[0].get('{' + namespaces['w'] + '}val')
+                    if abs_val in abstract_map:
+                        num_map[num_id] = abstract_map[abs_val]
+        except Exception:
+            pass
+        return num_map
+
+    def format_number(counter, fmt_val, txt_val):
+        valStr = str(counter)
+        if fmt_val == "lowerLetter":
+            valStr = chr(ord('a') + (counter - 1) % 26)
+        elif fmt_val == "upperLetter":
+            valStr = chr(ord('A') + (counter - 1) % 26)
+        elif fmt_val == "lowerRoman":
+            valStr = get_roman(counter).lower()
+        elif fmt_val == "upperRoman":
+            valStr = get_roman(counter).upper()
+        return re.sub(r'%\d', valStr, txt_val)
+
     def iter_block_items(doc):
         body = doc.element.body
         
-        for child in body.iterchildren():
+        num_map = extract_numbering_map(input_docx)
+        
+        def process_paragraph_tokens(child):
+            tokens = list(parse_paragraph(child))
+            numPr = child.xpath(".//w:numPr")
+            if numPr:
+                numId = numPr[0].xpath(".//w:numId")
+                ilvl = numPr[0].xpath(".//w:ilvl")
+                if numId and ilvl:
+                    numId_val = numId[0].get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val")
+                    ilvl_val = ilvl[0].get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val")
+                    if numId_val and ilvl_val:
+                        list_key = f"{numId_val}_{ilvl_val}"
+                        list_counters[list_key] = list_counters.get(list_key, 0) + 1
+                        counter = list_counters[list_key]
+                        
+                        if numId_val in num_map and ilvl_val in num_map[numId_val]:
+                            fmt_val, txt_val = num_map[numId_val][ilvl_val]
+                            formatted_num = format_number(counter, fmt_val, txt_val)
+                        else:
+                            roman = get_roman(counter).lower()
+                            formatted_num = f"{roman}."
+                            
+                        if tokens and tokens[0][0] == "text":
+                            tokens[0][1] = f"{formatted_num} " + tokens[0][1]
+                        elif tokens:
+                            tokens.insert(0, ["text", f"{formatted_num} ", tokens[0][2] if len(tokens[0])>2 else None])
+                        else:
+                            tokens.append(["text", formatted_num, None])
+            return tokens
+
+        for child in body:
             if child.tag.endswith('p'):
-                yield from parse_paragraph(child)
+                for t in process_paragraph_tokens(child):
+                    yield t
             elif child.tag.endswith('tbl'):
                 # Detect if table is used for formatting/layout (e.g., column 1 is question number)
                 is_layout = False
@@ -154,7 +215,8 @@ def parse_docx_to_data(input_docx, job_dir):
                             # Yield contents of the second cell sequentially
                             for cell_child in cells[1].iterchildren():
                                 if cell_child.tag.endswith('p'):
-                                    yield from parse_paragraph(cell_child)
+                                    for t in process_paragraph_tokens(cell_child):
+                                        yield t
                                 elif cell_child.tag.endswith('tbl'):
                                     yield ["table", parse_table(cell_child)]
                 else:
@@ -190,7 +252,10 @@ def parse_docx_to_data(input_docx, job_dir):
                 amatch = re.match(r'^(\d+[a-zA-Z]*[ivxlcdm]*)\.?\s*(.*)', text, re.I)
                 if amatch:
                     if current_answer_q is not None:
-                        answers[current_answer_q] = current_answer_tokens
+                        if current_answer_q in answers:
+                            answers[current_answer_q].extend(current_answer_tokens)
+                        else:
+                            answers[current_answer_q] = current_answer_tokens
                     current_answer_q = amatch.group(1)
                     cleaned = amatch.group(2).strip()
                     current_answer_tokens = []
@@ -242,7 +307,10 @@ def parse_docx_to_data(input_docx, job_dir):
             current_tokens.append(["text", text, align_val])
 
     if current_answer_q is not None:
-        answers[current_answer_q] = current_answer_tokens
+        if current_answer_q in answers:
+            answers[current_answer_q].extend(current_answer_tokens)
+        else:
+            answers[current_answer_q] = current_answer_tokens
     if current_qnum is not None:
         if options:
             mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
