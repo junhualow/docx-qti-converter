@@ -8,7 +8,89 @@ import string
 import xml.sax.saxutils as saxutils
 import lxml.etree as ET
 
-def parse_docx_to_data(input_docx, job_dir):
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
+
+
+def _extract_pdf_images(pdf_path, questions_with_images, assets_dir):
+    """
+    For each question that has an image placeholder, search for the question text
+    in the PDF, find the diagram region near it, and crop it as a high-fidelity PNG.
+    Uses a generous bounding box — users can fine-tune with the interactive crop tool.
+    Returns a dict mapping (qnum, image_index) -> new_filename.
+    """
+    if fitz is None:
+        return {}
+
+    doc = fitz.open(pdf_path)
+    replacements = {}
+
+    for qnum, search_text, img_index in questions_with_images:
+        search_str = search_text[:40].strip()
+        if not search_str:
+            continue
+
+        found_rect = None
+        target_page = None
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            rects = page.search_for(search_str)
+            if rects:
+                found_rect = rects[0]
+                target_page = page
+                break
+
+        if not target_page:
+            continue
+
+        # Collect all drawings and images on this page near/below the anchor text
+        anchor_y = found_rect.y1
+        drawings = target_page.get_drawings()
+        images_info = target_page.get_image_info()
+
+        diagram_rects = []
+        for d in drawings:
+            r = d["rect"]
+            if r.y0 > anchor_y - 30 and r.width > 20 and r.height > 10:
+                diagram_rects.append(r)
+        for img in images_info:
+            r = fitz.Rect(img["bbox"])
+            if r.y0 > anchor_y - 30 and r.width > 20 and r.height > 10:
+                diagram_rects.append(r)
+
+        if not diagram_rects:
+            continue
+
+        # Merge all nearby visual elements into one bounding box
+        final_rect = diagram_rects[0]
+        for r in diagram_rects[1:]:
+            final_rect |= r
+
+        # Use full page width on x-axis (diagrams always sit between text paragraphs)
+        # Only use y-axis bounds from the visual elements with gentle padding
+        final_rect.x0 = 0
+        final_rect.x1 = target_page.rect.x1
+        final_rect.y0 = max(0, final_rect.y0 - 15)
+        final_rect.y1 = min(target_page.rect.y1, final_rect.y1 + 15)
+
+        # Skip if bounding box is unreasonably large (entire page)
+        if final_rect.height > target_page.rect.height * 0.85:
+            continue
+
+        # Render at 150 DPI for crisp images
+        pix = target_page.get_pixmap(clip=final_rect, dpi=150)
+        new_filename = f"pdf_img_q{qnum}_{img_index}.png"
+        pix.save(os.path.join(assets_dir, new_filename))
+        replacements[(str(qnum), img_index)] = new_filename
+
+    doc.close()
+    return replacements
+
+
+def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
     """
     Parses a DOCX file and extracts questions, options, and answers.
     It combines logic for both standard text paragraphs and table-based layouts.
@@ -51,7 +133,9 @@ def parse_docx_to_data(input_docx, job_dir):
     def parse_paragraph(child):
         tokens = []
         for run in child.xpath("./w:r"):
-            text = "".join(node.text or "" for node in run.xpath(".//w:t"))
+            # Use ./w:t (direct children only) to avoid picking up text
+            # from nested floating text boxes / shapes inside the run
+            text = "".join(node.text or "" for node in run.xpath("./w:t"))
             if not text:
                 continue
             is_sup = run.xpath(".//w:vertAlign[@w:val='superscript']")
@@ -316,6 +400,40 @@ def parse_docx_to_data(input_docx, job_dir):
             mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
         else:
             structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
+
+    # --- PDF Image Replacement Step ---
+    # If a PDF companion was uploaded, replace DOCX-extracted images with
+    # high-fidelity cropped images from the PDF.
+    if pdf_path and fitz is not None:
+        assets_dir = os.path.join(job_dir, "assets")
+        questions_with_images = []
+
+        all_questions = mcq_questions + structured_questions
+        for q in all_questions:
+            img_index = 0
+            for token in q.get("tokens", []):
+                if token[0] == "image":
+                    # Find the first text token to use as search anchor
+                    search_text = ""
+                    for t in q["tokens"]:
+                        if t[0] == "text":
+                            search_text = t[1]
+                            break
+                    questions_with_images.append((q["qnum"], search_text, img_index))
+                    img_index += 1
+
+        if questions_with_images:
+            replacements = _extract_pdf_images(pdf_path, questions_with_images, assets_dir)
+
+            # Apply replacements to question tokens
+            for q in all_questions:
+                img_index = 0
+                for token in q.get("tokens", []):
+                    if token[0] == "image":
+                        key = (str(q["qnum"]), img_index)
+                        if key in replacements:
+                            token[1] = replacements[key]
+                        img_index += 1
 
     return {
         "mcq_questions": mcq_questions,

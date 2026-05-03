@@ -33,19 +33,59 @@
             margin-bottom: 25px;
         }
 
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 5px;
+        }
+
         .drop-zone {
             border: 2px dashed #3b82f6;
             border-radius: 12px;
-            padding: 45px;
+            padding: 35px 20px;
             text-align: center;
             color: #3b82f6;
-            font-size: 18px;
+            font-size: 16px;
             cursor: pointer;
             transition: 0.2s;
         }
 
+        .drop-zone.pdf-zone {
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+        }
+
+        .drop-zone .label {
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .drop-zone .label .required {
+            color: #dc2626;
+            font-size: 11px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .drop-zone .label .optional {
+            color: #9ca3af;
+            font-size: 11px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
         .drop-zone.dragover {
             background: #eef2ff;
+        }
+
+        .drop-zone.pdf-zone.dragover {
+            background: #f5f3ff;
         }
 
         .drop-zone.has-file {
@@ -55,8 +95,9 @@
 
         .filename {
             margin-top: 10px;
-            font-size: 15px;
+            font-size: 14px;
             color: #111;
+            word-break: break-all;
         }
 
         button {
@@ -136,6 +177,55 @@
         .options-list { list-style-type: none; padding: 0; }
         .options-list li { padding: 8px; background: white; margin-bottom: 4px; border-radius: 4px; border: 1px solid #e5e7eb; }
         .answer-box { background: #dcfce7; padding: 12px; border-radius: 4px; color: #166534; font-weight: 500; margin-top: 10px; }
+
+        /* Image wrapper with crop button */
+        .img-wrapper { position: relative; display: inline-block; margin: 8px 0; }
+        .img-wrapper img { display: block; }
+        .crop-btn {
+            position: absolute; top: 6px; right: 6px;
+            background: rgba(0,0,0,0.65); color: white;
+            border: none; border-radius: 6px; padding: 4px 10px;
+            font-size: 12px; cursor: pointer; z-index: 10;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .img-wrapper:hover .crop-btn { opacity: 1; }
+        .crop-btn:hover { background: rgba(37,99,235,0.9); }
+
+        /* Crop modal */
+        .crop-modal {
+            display: none; position: fixed; z-index: 2000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        .crop-modal.active { display: flex; }
+        .crop-stage {
+            position: relative; display: inline-block;
+            max-width: 90vw; max-height: 70vh;
+            cursor: crosshair;
+        }
+        .crop-stage img { max-width: 90vw; max-height: 70vh; display: block; user-select: none; -webkit-user-drag: none; }
+        .crop-overlay {
+            position: absolute; border: 2px dashed #3b82f6;
+            background: rgba(59,130,246,0.08);
+            pointer-events: none; box-sizing: border-box;
+        }
+        .crop-dim {
+            position: absolute; background: rgba(0,0,0,0.45);
+            pointer-events: none;
+        }
+        .crop-actions {
+            margin-top: 16px; display: flex; gap: 12px;
+        }
+        .crop-actions button {
+            width: auto; padding: 10px 28px; font-size: 15px; border-radius: 8px; border: none; cursor: pointer;
+        }
+        .crop-actions .crop-confirm { background: #10b981; color: white; }
+        .crop-actions .crop-cancel { background: #6b7280; color: white; }
+        .crop-actions .crop-reset { background: #f59e0b; color: white; }
+        .crop-hint {
+            color: #d1d5db; font-size: 13px; margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -145,13 +235,24 @@
     <div class="subtitle">Upload a formatted Word document, preview the extraction, and download a QTI package</div>
 
     <form id="uploadForm">
-        <div id="dropZone" class="drop-zone">
-            Drag & drop your .docx file here<br>
-            or click to select
-            <div id="fileName" class="filename"></div>
+        <div class="upload-grid">
+            <div id="dropZone" class="drop-zone">
+                <div class="label">📄 Word Document <span class="required">(required)</span></div>
+                Drag & drop your .docx file here<br>
+                or click to select
+                <div id="fileName" class="filename"></div>
+            </div>
+
+            <div id="pdfDropZone" class="drop-zone pdf-zone">
+                <div class="label">📑 PDF Companion <span class="optional">(optional)</span></div>
+                Drag & drop the same file as .pdf<br>
+                for better image extraction
+                <div id="pdfFileName" class="filename"></div>
+            </div>
         </div>
 
         <input type="file" id="fileInput" accept=".docx" hidden>
+        <input type="file" id="pdfFileInput" accept=".pdf" hidden>
         <button type="submit">Upload & Preview Document</button>
     </form>
 
@@ -169,7 +270,7 @@
         <h2>How to format your document</h2>
         <ul>
             <li>Start each question with a number (e.g. <b>1 What is...</b>)</li>
-            <li>Images with text overlay should be "cleaned up" by replacing the affected images with screenshots.</li>
+            <li><b>For best image quality:</b> Also upload the same document saved as PDF. In Word, click <b>File → Save As → PDF</b>. The converter will use the PDF to extract pixel-perfect diagrams (with text overlays baked in).</li>
             <li>MCQ options should be labelled with <b>A B C D</b></li>
             <li>Structured questions will be extracted as a whole (including parts/subparts).</li>
             <li>Indents (e.g., a), (i), etc) should not be used; replace them with plain text instead.</li>
@@ -193,12 +294,36 @@
     <img id="modalImg">
 </div>
 
+<!-- Crop modal -->
+<div id="cropModal" class="crop-modal">
+    <div class="crop-stage" id="cropStage">
+        <img id="cropImg">
+        <div class="crop-dim" id="cropDimTop"></div>
+        <div class="crop-dim" id="cropDimBottom"></div>
+        <div class="crop-dim" id="cropDimLeft"></div>
+        <div class="crop-dim" id="cropDimRight"></div>
+        <div class="crop-overlay" id="cropOverlay"></div>
+    </div>
+    <div class="crop-hint">Click and drag to select the crop region</div>
+    <div class="crop-actions">
+        <button class="crop-reset" id="cropResetBtn">↩ Reset</button>
+        <button class="crop-cancel" id="cropCancelBtn">Cancel</button>
+        <button class="crop-confirm" id="cropConfirmBtn">✂ Confirm Crop</button>
+    </div>
+</div>
+
 <script>
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const fileName = document.getElementById("fileName");
+
+const pdfDropZone = document.getElementById("pdfDropZone");
+const pdfFileInput = document.getElementById("pdfFileInput");
+const pdfFileName = document.getElementById("pdfFileName");
+
 let currentData = null;
 
+/* --- DOCX drop zone --- */
 dropZone.addEventListener("click", () => fileInput.click());
 
 dropZone.addEventListener("dragover", e => {
@@ -221,8 +346,36 @@ fileInput.addEventListener("change", updateFileName);
 
 function updateFileName() {
     if (fileInput.files.length > 0) {
-        fileName.textContent = "Selected: " + fileInput.files[0].name;
+        fileName.textContent = "✅ " + fileInput.files[0].name;
         dropZone.classList.add("has-file");
+    }
+}
+
+/* --- PDF drop zone --- */
+pdfDropZone.addEventListener("click", () => pdfFileInput.click());
+
+pdfDropZone.addEventListener("dragover", e => {
+    e.preventDefault();
+    pdfDropZone.classList.add("dragover");
+});
+
+pdfDropZone.addEventListener("dragleave", () => {
+    pdfDropZone.classList.remove("dragover");
+});
+
+pdfDropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    pdfDropZone.classList.remove("dragover");
+    pdfFileInput.files = e.dataTransfer.files;
+    updatePdfFileName();
+});
+
+pdfFileInput.addEventListener("change", updatePdfFileName);
+
+function updatePdfFileName() {
+    if (pdfFileInput.files.length > 0) {
+        pdfFileName.textContent = "✅ " + pdfFileInput.files[0].name;
+        pdfDropZone.classList.add("has-file");
     }
 }
 
@@ -239,6 +392,9 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
+    if (pdfFileInput.files.length > 0) {
+        formData.append("pdf_file", pdfFileInput.files[0]);
+    }
 
     try {
         const response = await fetch("/upload", {
@@ -285,7 +441,8 @@ function renderTokens(tokens, jobId) {
                 if (t[2] === 'center') style = 'text-align: center;';
                 else if (t[2] === 'right') style = 'text-align: right;';
             }
-            html += `<div style="${style}"><img src="/static/jobs/${jobId}/assets/${t[1]}" alt="Extracted Image"></div>`;
+            const imgSrc = `/static/jobs/${jobId}/assets/${t[1]}`;
+            html += `<div style="${style}"><div class="img-wrapper"><button class="crop-btn" data-src="${imgSrc}" data-filename="${t[1]}">✂ Crop</button><img src="${imgSrc}" alt="Extracted Image"></div></div>`;
         } else if (t[0] === 'table') {
             html += '<table>';
             t[1].forEach(row => {
@@ -341,7 +498,9 @@ document.getElementById("cancelBtn").addEventListener("click", () => {
     document.getElementById("uploadForm").style.display = "block";
     document.getElementById("uploadForm").reset();
     fileName.textContent = "";
+    pdfFileName.textContent = "";
     dropZone.classList.remove("has-file");
+    pdfDropZone.classList.remove("has-file");
     document.getElementById("instructionsSection").style.display = "block";
     document.getElementById("previewArea").style.display = "none";
     document.getElementById("message").innerHTML = "";
@@ -414,6 +573,149 @@ if (sampleImage) {
 modal.onclick = () => {
     modal.style.display = "none";
 };
+
+/* ---- Interactive Crop Tool ---- */
+const cropModal = document.getElementById("cropModal");
+const cropImg = document.getElementById("cropImg");
+const cropStage = document.getElementById("cropStage");
+const cropOverlay = document.getElementById("cropOverlay");
+const cropDimTop = document.getElementById("cropDimTop");
+const cropDimBottom = document.getElementById("cropDimBottom");
+const cropDimLeft = document.getElementById("cropDimLeft");
+const cropDimRight = document.getElementById("cropDimRight");
+
+let cropState = { active: false, filename: '', startX: 0, startY: 0, x1: 0, y1: 0, x2: 0, y2: 0, imgW: 0, imgH: 0, triggerBtn: null };
+
+// Delegate click on crop buttons
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('crop-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const src = e.target.dataset.src;
+        cropState.filename = e.target.dataset.filename;
+        cropState.triggerBtn = e.target;
+        cropImg.src = src;
+        cropImg.onload = () => {
+            cropState.imgW = cropImg.naturalWidth;
+            cropState.imgH = cropImg.naturalHeight;
+            // Default selection: full image
+            cropState.x1 = 0;
+            cropState.y1 = 0;
+            cropState.x2 = cropImg.clientWidth;
+            cropState.y2 = cropImg.clientHeight;
+            updateCropOverlay();
+        };
+        cropModal.classList.add('active');
+    }
+});
+
+function updateCropOverlay() {
+    const w = cropImg.clientWidth;
+    const h = cropImg.clientHeight;
+    const x1 = Math.max(0, Math.min(cropState.x1, cropState.x2));
+    const y1 = Math.max(0, Math.min(cropState.y1, cropState.y2));
+    const x2 = Math.min(w, Math.max(cropState.x1, cropState.x2));
+    const y2 = Math.min(h, Math.max(cropState.y1, cropState.y2));
+
+    cropOverlay.style.left = x1 + 'px';
+    cropOverlay.style.top = y1 + 'px';
+    cropOverlay.style.width = (x2 - x1) + 'px';
+    cropOverlay.style.height = (y2 - y1) + 'px';
+
+    // Dimming regions around the selection
+    cropDimTop.style.left = '0'; cropDimTop.style.top = '0';
+    cropDimTop.style.width = w + 'px'; cropDimTop.style.height = y1 + 'px';
+
+    cropDimBottom.style.left = '0'; cropDimBottom.style.top = y2 + 'px';
+    cropDimBottom.style.width = w + 'px'; cropDimBottom.style.height = (h - y2) + 'px';
+
+    cropDimLeft.style.left = '0'; cropDimLeft.style.top = y1 + 'px';
+    cropDimLeft.style.width = x1 + 'px'; cropDimLeft.style.height = (y2 - y1) + 'px';
+
+    cropDimRight.style.left = x2 + 'px'; cropDimRight.style.top = y1 + 'px';
+    cropDimRight.style.width = (w - x2) + 'px'; cropDimRight.style.height = (y2 - y1) + 'px';
+}
+
+cropStage.addEventListener('mousedown', (e) => {
+    if (e.target !== cropImg && e.target !== cropStage) return;
+    const rect = cropImg.getBoundingClientRect();
+    cropState.active = true;
+    cropState.startX = e.clientX - rect.left;
+    cropState.startY = e.clientY - rect.top;
+    cropState.x1 = cropState.startX;
+    cropState.y1 = cropState.startY;
+    cropState.x2 = cropState.startX;
+    cropState.y2 = cropState.startY;
+    updateCropOverlay();
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (!cropState.active) return;
+    const rect = cropImg.getBoundingClientRect();
+    cropState.x2 = Math.max(0, Math.min(e.clientX - rect.left, cropImg.clientWidth));
+    cropState.y2 = Math.max(0, Math.min(e.clientY - rect.top, cropImg.clientHeight));
+    updateCropOverlay();
+});
+
+window.addEventListener('mouseup', () => {
+    cropState.active = false;
+});
+
+document.getElementById('cropResetBtn').addEventListener('click', () => {
+    cropState.x1 = 0; cropState.y1 = 0;
+    cropState.x2 = cropImg.clientWidth; cropState.y2 = cropImg.clientHeight;
+    updateCropOverlay();
+});
+
+document.getElementById('cropCancelBtn').addEventListener('click', () => {
+    cropModal.classList.remove('active');
+});
+
+document.getElementById('cropConfirmBtn').addEventListener('click', async () => {
+    const displayW = cropImg.clientWidth;
+    const displayH = cropImg.clientHeight;
+
+    // Normalize to 0-1 fractions
+    const left = Math.min(cropState.x1, cropState.x2) / displayW;
+    const top = Math.min(cropState.y1, cropState.y2) / displayH;
+    const right = Math.max(cropState.x1, cropState.x2) / displayW;
+    const bottom = Math.max(cropState.y1, cropState.y2) / displayH;
+
+    // Skip if selection is basically the full image
+    if (left < 0.01 && top < 0.01 && right > 0.99 && bottom > 0.99) {
+        cropModal.classList.remove('active');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/crop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                job_id: currentData.job_id,
+                filename: cropState.filename,
+                top, left, right, bottom
+            })
+        });
+        const result = await resp.json();
+        if (result.new_filename) {
+            // Update the data model so the QTI download uses the cropped version
+            const allQ = [...currentData.mcq_questions, ...currentData.structured_questions];
+            for (const q of allQ) {
+                for (const token of q.tokens) {
+                    if (token[0] === 'image' && token[1] === cropState.filename) {
+                        token[1] = result.new_filename;
+                    }
+                }
+            }
+            // Re-render preview
+            renderPreview(currentData);
+        }
+    } catch (err) {
+        alert('Crop failed: ' + err.message);
+    }
+    cropModal.classList.remove('active');
+});
 </script>
 
 </body>

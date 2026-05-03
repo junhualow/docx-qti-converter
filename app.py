@@ -4,6 +4,7 @@ import shutil
 from flask import Flask, render_template, request, send_file, after_this_request, jsonify
 from werkzeug.utils import secure_filename
 from converter import parse_docx_to_data, generate_qti_from_data
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -46,12 +47,74 @@ def upload():
         shutil.rmtree(job_dir, ignore_errors=True)
         return {"error": "File exceeds 10MB limit"}, 400
 
+    # Handle optional PDF companion file
+    pdf_path = None
+    if "pdf_file" in request.files:
+        pdf_file = request.files["pdf_file"]
+        if pdf_file.filename and pdf_file.filename.lower().endswith(".pdf"):
+            pdf_safe_name = secure_filename(pdf_file.filename)
+            pdf_path = os.path.join(job_dir, pdf_safe_name)
+            pdf_file.save(pdf_path)
+
     try:
-        data = parse_docx_to_data(input_path, job_dir)
+        data = parse_docx_to_data(input_path, job_dir, pdf_path=pdf_path)
         data['job_id'] = job_id
         return jsonify(data)
     except Exception as e:
         shutil.rmtree(job_dir, ignore_errors=True)
+        return {"error": str(e)}, 500
+
+@app.route("/crop", methods=["POST"])
+def crop_image():
+    """Crop an extracted image based on user-defined coordinates."""
+    data = request.json
+    if not data:
+        return {"error": "No data"}, 400
+
+    job_id = data.get("job_id")
+    filename = data.get("filename")
+    # Crop coordinates as fractions (0.0 to 1.0) of the original image dimensions
+    crop_top = data.get("top", 0)
+    crop_left = data.get("left", 0)
+    crop_right = data.get("right", 1)
+    crop_bottom = data.get("bottom", 1)
+
+    if not job_id or not filename:
+        return {"error": "Missing job_id or filename"}, 400
+
+    # Sanitize filename to prevent directory traversal
+    filename = os.path.basename(filename)
+    img_path = os.path.join(STATIC_JOBS, job_id, "assets", filename)
+
+    if not os.path.exists(img_path):
+        return {"error": "Image not found"}, 404
+
+    try:
+        img = Image.open(img_path)
+        w, h = img.size
+
+        # Convert fractional coordinates to pixel values
+        left = int(crop_left * w)
+        top = int(crop_top * h)
+        right = int(crop_right * w)
+        bottom = int(crop_bottom * h)
+
+        # Ensure valid crop region
+        left = max(0, min(left, w - 1))
+        top = max(0, min(top, h - 1))
+        right = max(left + 1, min(right, w))
+        bottom = max(top + 1, min(bottom, h))
+
+        cropped = img.crop((left, top, right, bottom))
+
+        # Save as new file with _cropped suffix
+        base, ext = os.path.splitext(filename)
+        new_filename = f"{base}_cropped{ext}"
+        new_path = os.path.join(STATIC_JOBS, job_id, "assets", new_filename)
+        cropped.save(new_path)
+
+        return jsonify({"new_filename": new_filename})
+    except Exception as e:
         return {"error": str(e)}, 500
 
 @app.route("/convert", methods=["POST"])
