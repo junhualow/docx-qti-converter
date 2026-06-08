@@ -47,18 +47,10 @@ def upload():
         shutil.rmtree(job_dir, ignore_errors=True)
         return {"error": "File exceeds 10MB limit"}, 400
 
-    # Handle optional PDF companion file
-    pdf_path = None
-    if "pdf_file" in request.files:
-        pdf_file = request.files["pdf_file"]
-        if pdf_file.filename and pdf_file.filename.lower().endswith(".pdf"):
-            pdf_safe_name = secure_filename(pdf_file.filename)
-            pdf_path = os.path.join(job_dir, pdf_safe_name)
-            pdf_file.save(pdf_path)
-
     try:
-        data = parse_docx_to_data(input_path, job_dir, pdf_path=pdf_path)
+        data = parse_docx_to_data(input_path, job_dir)
         data['job_id'] = job_id
+        data['filename'] = safe_name
         return jsonify(data)
     except Exception as e:
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -130,24 +122,42 @@ def convert():
         return {"error": "Job directory not found. Please upload again."}, 404
 
     try:
-        zip_path = generate_qti_from_data(data, job_dir)
+        generate_qti_from_data(data, job_dir)
+        return jsonify({"status": "success"})
     except Exception as e:
         return {"error": str(e)}, 500
 
-    @after_this_request
-    def cleanup(response):
-        try:
-            response.call_on_close(lambda: shutil.rmtree(job_dir, ignore_errors=True))
-        except Exception:
-            shutil.rmtree(job_dir, ignore_errors=True)
-        return response
+@app.route("/download_zip/<job_id>")
+def download_zip(job_id):
+    # Sanitize job_id to prevent directory traversal
+    job_id = os.path.basename(job_id)
+    job_dir = os.path.join(STATIC_JOBS, job_id)
+    zip_path = os.path.join(job_dir, "qti_package.zip")
 
-    return send_file(
+    if not os.path.exists(zip_path):
+        return "File not found", 404
+
+    filename = request.args.get("filename", "converted_qti.zip")
+    # Sanitize filename
+    filename = secure_filename(filename)
+    if not filename.endswith(".zip"):
+        filename += ".zip"
+
+    response = send_file(
         zip_path,
         as_attachment=True,
-        download_name="converted_qti.zip",
+        download_name=filename,
         mimetype="application/zip"
     )
+
+    @response.call_on_close
+    def cleanup():
+        try:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True)

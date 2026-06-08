@@ -5,285 +5,962 @@
     <title>DOCX → QTI Converter</title>
 
     <style>
-        body {
-            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-            background: #f5f7fb;
-            margin: 0;
-            padding: 40px 0;
-            display: flex;
-            justify-content: center;
-        }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
 
-        .container {
-            width: 760px;
-            background: white;
-            padding: 30px 40px;
-            border-radius: 14px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-        }
+:root {
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --secondary: #3b82f6;
+    --success: #10b981;
+    --success-hover: #059669;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --bg-main: #f8fafc;
+    --bg-card: #ffffff;
+    --border-color: #e2e8f0;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --radius: 12px;
+}
 
-        h1 {
-            text-align: center;
-            margin-bottom: 5px;
-        }
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-main);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
 
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 25px;
-        }
+.container {
+    width: 100%;
+    margin: 0 auto;
+    padding: 40px 20px;
+    box-sizing: border-box;
+    transition: max-width 0.4s ease;
+}
 
-        .upload-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 5px;
-        }
+.container.upload-mode {
+    max-width: 760px;
+}
 
-        .drop-zone {
-            border: 2px dashed #3b82f6;
-            border-radius: 12px;
-            padding: 35px 20px;
-            text-align: center;
-            color: #3b82f6;
-            font-size: 16px;
-            cursor: pointer;
-            transition: 0.2s;
-        }
+.container.editor-mode {
+    max-width: 1440px;
+}
 
-        .drop-zone.pdf-zone {
-            border-color: #8b5cf6;
-            color: #8b5cf6;
-        }
+.card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    padding: 30px;
+}
 
-        .drop-zone .label {
-            font-weight: 600;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-        }
+h1, h2, h3, h4 {
+    font-weight: 700;
+    color: var(--text-main);
+    margin-top: 0;
+}
 
-        .drop-zone .label .required {
-            color: #dc2626;
-            font-size: 11px;
-            font-weight: 400;
-            text-transform: none;
-            letter-spacing: 0;
-        }
+.subtitle {
+    color: var(--text-muted);
+    margin-bottom: 25px;
+    font-size: 15px;
+}
 
-        .drop-zone .label .optional {
-            color: #9ca3af;
-            font-size: 11px;
-            font-weight: 400;
-            text-transform: none;
-            letter-spacing: 0;
-        }
+/* Upload styles */
+.upload-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
 
-        .drop-zone.dragover {
-            background: #eef2ff;
-        }
+.drop-zone {
+    border: 2px dashed var(--secondary);
+    border-radius: var(--radius);
+    padding: 45px 20px;
+    text-align: center;
+    color: var(--secondary);
+    font-size: 16px;
+    cursor: pointer;
+    background: rgba(59, 130, 246, 0.02);
+    transition: all 0.2s ease;
+}
 
-        .drop-zone.pdf-zone.dragover {
-            background: #f5f3ff;
-        }
+.drop-zone.dragover {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: var(--primary);
+    transform: scale(0.99);
+}
 
-        .drop-zone.has-file {
-            border-style: solid;
-            color: #111;
-        }
+.drop-zone.has-file {
+    border-style: solid;
+    color: var(--text-main);
+    background: rgba(16, 185, 129, 0.02);
+    border-color: var(--success);
+}
 
-        .filename {
-            margin-top: 10px;
-            font-size: 14px;
-            color: #111;
-            word-break: break-all;
-        }
+.drop-zone .label {
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
 
-        button {
-            margin-top: 20px;
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background: #2563eb;
-            color: white;
-            font-size: 17px;
-            cursor: pointer;
-        }
+.filename {
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--success);
+    word-break: break-all;
+}
 
-        button:hover {
-            background: #1e4ed8;
-        }
+/* Dashboard Editor Layout */
+.editor-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 24px;
+    align-items: start;
+    margin-top: 20px;
+}
 
-        #spinner {
-            display: none;
-            text-align: center;
-            margin-top: 15px;
-        }
+.editor-sidebar {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    padding: 16px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 20px;
+}
 
-        #message {
-            margin-top: 20px;
-            text-align: center;
-        }
+.sidebar-stats {
+    background: var(--bg-main);
+    border-radius: 8px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    text-align: center;
+    gap: 8px;
+}
 
-        .error {
-            color: #dc2626;
-        }
+.sidebar-stats .stat-item {
+    font-size: 11px;
+    color: var(--text-muted);
+}
 
-        .instructions {
-            margin-top: 40px;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 30px;
-        }
+.sidebar-stats .stat-num {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+}
 
-        .sample-container {
-            margin-top: 15px;
-            text-align: center;
-        }
+.question-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 500px;
+    overflow-y: auto;
+}
 
-        .sample-container img {
-            width: 100%;
-            max-height: 500px;
-            object-fit: contain;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            cursor: zoom-in;
-        }
+.question-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
 
-        /* Zoom modal */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0; top: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            justify-content: center;
-            align-items: center;
-        }
+.question-item:hover {
+    background: var(--bg-main);
+    border-color: var(--text-muted);
+}
 
-        .modal img {
-            max-width: 90%;
-            max-height: 90%;
-        }
+.question-item.active {
+    background: rgba(79, 70, 229, 0.05);
+    border-color: var(--primary);
+}
 
-        /* Preview styles */
-        .question-card { border-left: 4px solid #3b82f6; background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
-        .question-card p { overflow-wrap: break-word; word-break: break-word; }
-        .question-card img { max-width: 100%; border-radius: 4px; }
-        .question-card table { border-collapse: collapse; width: 100%; margin: 10px 0; background: white; }
-        .question-card td, .question-card th { border: 1px solid #d1d5db; padding: 8px; }
-        .options-list { list-style-type: none; padding: 0; }
-        .options-list li { padding: 8px; background: white; margin-bottom: 4px; border-radius: 4px; border: 1px solid #e5e7eb; }
-        .answer-box { background: #dcfce7; padding: 12px; border-radius: 4px; color: #166534; font-weight: 500; margin-top: 10px; }
+.question-item-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 
-        /* Image wrapper with crop button */
-        .img-wrapper { position: relative; display: inline-block; margin: 8px 0; }
-        .img-wrapper img { display: block; }
-        .crop-btn {
-            position: absolute; top: 6px; right: 6px;
-            background: rgba(0,0,0,0.65); color: white;
-            border: none; border-radius: 6px; padding: 4px 10px;
-            font-size: 12px; cursor: pointer; z-index: 10;
-            opacity: 0; transition: opacity 0.2s;
-        }
-        .img-wrapper:hover .crop-btn { opacity: 1; }
-        .crop-btn:hover { background: rgba(37,99,235,0.9); }
+.question-item .qnum {
+    font-weight: 600;
+    font-size: 14px;
+}
 
-        /* Crop modal */
-        .crop-modal {
-            display: none; position: fixed; z-index: 2000;
-            left: 0; top: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            flex-direction: column; align-items: center; justify-content: center;
-        }
-        .crop-modal.active { display: flex; }
-        .crop-stage {
-            position: relative; display: inline-block;
-            max-width: 90vw; max-height: 70vh;
-            cursor: crosshair;
-        }
-        .crop-stage img { max-width: 90vw; max-height: 70vh; display: block; user-select: none; -webkit-user-drag: none; }
-        .crop-overlay {
-            position: absolute; border: 2px dashed #3b82f6;
-            background: rgba(59,130,246,0.08);
-            pointer-events: none; box-sizing: border-box;
-        }
-        .crop-dim {
-            position: absolute; background: rgba(0,0,0,0.45);
-            pointer-events: none;
-        }
-        .crop-actions {
-            margin-top: 16px; display: flex; gap: 12px;
-        }
-        .crop-actions button {
-            width: auto; padding: 10px 28px; font-size: 15px; border-radius: 8px; border: none; cursor: pointer;
-        }
-        .crop-actions .crop-confirm { background: #10b981; color: white; }
-        .crop-actions .crop-cancel { background: #6b7280; color: white; }
-        .crop-actions .crop-reset { background: #f59e0b; color: white; }
-        .crop-hint {
-            color: #d1d5db; font-size: 13px; margin-top: 8px;
-        }
+.badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+}
+
+.badge.mcq {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--secondary);
+}
+
+.badge.structured {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+
+.badge-icons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badge-icon {
+    font-size: 12px;
+}
+
+.editor-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Tabs & Editor controls */
+.workspace-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 16px;
+    gap: 16px;
+}
+
+.type-toggle-container {
+    display: flex;
+    background: var(--border-color);
+    padding: 3px;
+    border-radius: 8px;
+}
+
+.type-toggle-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.type-toggle-btn.active {
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    color: var(--primary);
+}
+
+.editor-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 16px;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+}
+
+.tab-btn.active {
+    border-bottom-color: var(--primary);
+    color: var(--primary);
+}
+
+.editor-panes {
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-pane {
+    display: none;
+}
+
+.editor-pane.active {
+    display: block;
+}
+
+/* Split view layout */
+.split-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.code-container, .preview-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pane-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.code-editor {
+    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    font-size: 14px;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 16px;
+    width: 100%;
+    min-height: 350px;
+    box-sizing: border-box;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+}
+
+.code-editor:focus {
+    border-color: var(--primary);
+}
+
+.preview-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 350px;
+    max-height: 600px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+#htmlPreview {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* WYSIWYG Editor Toolbar */
+.wysiwyg-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    background: #f1f5f9;
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.toolbar-btn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+}
+
+.toolbar-btn:hover {
+    background: var(--border-color);
+    color: var(--primary);
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+    margin: 0 4px;
+}
+
+.toolbar-select {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    cursor: pointer;
+    outline: none;
+    height: 28px;
+    transition: all 0.15s ease;
+    margin: 0 4px;
+}
+
+.toolbar-select:hover {
+    border-color: var(--text-muted);
+    background: var(--bg-main);
+}
+
+
+.preview-box p {
+    margin: 0 0 1em 0;
+}
+
+.preview-box img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+.preview-box table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+}
+
+.preview-box td, .preview-box th {
+    border: 1px solid var(--border-color);
+    padding: 8px;
+}
+
+/* Options editor */
+.options-editor-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    margin-top: 24px;
+}
+
+.option-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.option-letter {
+    font-weight: 700;
+    font-size: 14px;
+    width: 20px;
+}
+
+.option-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+}
+
+.option-input:focus {
+    border-color: var(--primary);
+}
+
+.option-radio {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--success);
+}
+
+.option-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* Buttons */
+button {
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+button.primary {
+    background: var(--primary);
+    color: white;
+    padding: 12px 24px;
+    font-size: 15px;
+}
+
+button.primary:hover {
+    background: var(--primary-hover);
+}
+
+button.success {
+    background: var(--success);
+    color: white;
+    padding: 10px 20px;
+}
+
+button.success:hover {
+    background: var(--success-hover);
+}
+
+button.danger {
+    background: var(--danger);
+    color: white;
+    padding: 8px 14px;
+}
+
+button.danger:hover {
+    background: var(--danger-hover);
+}
+
+button.secondary {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 8px 14px;
+}
+
+button.secondary:hover {
+    background: var(--border-color);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Crop overlay styles */
+.img-wrapper {
+    position: relative;
+    display: inline-block;
+    margin: 8px 0;
+}
+
+.img-wrapper img {
+    display: block;
+}
+
+.crop-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(15, 23, 42, 0.8);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.img-wrapper:hover .crop-btn {
+    opacity: 1;
+}
+
+.crop-btn:hover {
+    background: var(--primary);
+}
+
+/* Interactive Crop Stage */
+.crop-modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.9);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.crop-modal.active {
+    display: flex;
+}
+
+.crop-stage {
+    position: relative;
+    display: inline-block;
+    max-width: 90vw;
+    max-height: 70vh;
+    cursor: crosshair;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.crop-stage img {
+    max-width: 90vw;
+    max-height: 70vh;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.crop-overlay {
+    position: absolute;
+    border: 2px dashed var(--secondary);
+    background: rgba(59, 130, 246, 0.1);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.crop-dim {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+.crop-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 12px;
+}
+
+.crop-actions button {
+    padding: 10px 24px;
+    font-size: 14px;
+}
+
+.crop-confirm {
+    background: var(--success);
+    color: white;
+}
+
+.crop-cancel {
+    background: var(--text-muted);
+    color: white;
+}
+
+.crop-reset {
+    background: var(--warning);
+    color: white;
+}
+
+.crop-hint {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-top: 10px;
+}
+
+/* Spinner and Messages */
+#spinner {
+    display: none;
+    text-align: center;
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(59, 130, 246, 0.05);
+    border-radius: 8px;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+#message {
+    margin-top: 20px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.error {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.05);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.1);
+}
+
+.instructions {
+    margin-top: 40px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 30px;
+}
+
+.instructions h2 {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.instructions ul {
+    padding-left: 20px;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+.sample-container {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.sample-container img {
+    width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    cursor: zoom-in;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.85);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal img {
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 4px;
+}
+
+/* Sticky top bar for editor */
+.top-action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 16px 24px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.top-action-bar h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.top-action-bar .actions {
+    display: flex;
+    gap: 12px;
+}
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>DOCX → QTI Converter</h1>
-    <div class="subtitle">Upload a formatted Word document, preview the extraction, and download a QTI package</div>
+<div class="container upload-mode" id="mainContainer">
+    <!-- Upload Section -->
+    <div id="uploadSection" class="card">
+        <h1>DOCX → QTI Converter</h1>
+        <div class="subtitle">Upload a formatted Word document, preview & edit the extraction, and compile into a QTI package</div>
 
-    <form id="uploadForm">
-        <div class="upload-grid">
-            <div id="dropZone" class="drop-zone">
-                <div class="label">📄 Word Document <span class="required">(required)</span></div>
-                Drag & drop your .docx file here<br>
-                or click to select
-                <div id="fileName" class="filename"></div>
+        <form id="uploadForm">
+            <div class="upload-grid">
+                <div id="dropZone" class="drop-zone">
+                    <div class="label">📄 Word Document <span class="required">(required)</span></div>
+                    Drag & drop your .docx file here<br>
+                    or click to select
+                    <div id="fileName" class="filename"></div>
+                </div>
             </div>
 
-            <div id="pdfDropZone" class="drop-zone pdf-zone">
-                <div class="label">📑 PDF Companion <span class="optional">(optional)</span></div>
-                Drag & drop the same file as .pdf<br>
-                for better image extraction
-                <div id="pdfFileName" class="filename"></div>
+            <input type="file" id="fileInput" accept=".docx" hidden>
+            <button type="submit" class="primary" style="width: 100%;">Upload & Preview Document</button>
+        </form>
+
+        <div id="spinner">⏳ Processing document… please wait</div>
+        <div id="message"></div>
+
+        <div class="instructions" id="instructionsSection">
+            <h2>How to format your document</h2>
+            <ul>
+                <li>Start each question with a number (e.g. <b>1 What is...</b>)</li>
+                <li>MCQ options should be labelled with <b>A B C D</b></li>
+                <li>Structured questions will be extracted as a whole (including parts/subparts).</li>
+                <li>Indents (e.g., a), (i), etc) should not be used; replace them with plain text instead.</li>
+                <li>If you have answers to the questions, append them at the bottom of the document and begin the answer segment with capitalised text <b>ANSWERS</b>.</li>
+                <li>Answers for parts/subparts should begin with the question number for the first part/subpart but not the subsequent parts/subparts. Refer to sample document question 4's answers — <b>"4"</b> only appears once.</li>
+            </ul>
+
+            <div class="sample-container">
+                <img id="sampleImage"
+                     src="{{ url_for('static', filename='sample_doc.png') }}"
+                     alt="Sample document">
+                <div style="font-size:13px;color:#666;margin-top:6px;">
+                    Click image to zoom
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor Workspace Section -->
+    <div id="editorSection" style="display: none;">
+        <!-- Top Sticky Action Bar -->
+        <div class="top-action-bar">
+            <div>
+                <h2 id="docTitle">QTI Assessment Workspace</h2>
+                <div style="font-size: 12px; color: var(--text-muted);" id="docSubtitle">Editing active document</div>
+            </div>
+            <div class="actions">
+                <button class="secondary" id="cancelBtn">↩ Start Over</button>
+                <button class="success" id="confirmBtn">📥 Download QTI Package</button>
             </div>
         </div>
 
-        <input type="file" id="fileInput" accept=".docx" hidden>
-        <input type="file" id="pdfFileInput" accept=".pdf" hidden>
-        <button type="submit">Upload & Preview Document</button>
-    </form>
+        <div class="editor-layout">
+            <!-- Sidebar: Question Navigator -->
+            <div class="editor-sidebar">
+                <div class="sidebar-stats">
+                    <div class="stat-item">
+                        <div class="stat-num" id="statTotal">0</div>
+                        Total Qs
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="statMcq">0</div>
+                        MCQ
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-num" id="statStructured">0</div>
+                        Structured
+                    </div>
+                </div>
+                <div class="question-list" id="questionList">
+                    <!-- Loaded dynamically -->
+                </div>
+                <button class="secondary" id="addQuestionBtn" style="margin-top: 10px;">➕ Add Question</button>
+            </div>
 
-    <div id="spinner">⏳ Processing document… please wait</div>
-    <div id="message"></div>
+            <!-- Workspace: Active Question Editor -->
+            <div class="editor-workspace">
+                <div class="card" id="activeQuestionEditor" style="padding: 24px;">
+                    <div class="workspace-header">
+                        <div>
+                            <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Editing Question</span>
+                            <h2 style="margin: 4px 0 0 0;" id="activeQNumTitle">Question -</h2>
+                        </div>
+                        <div class="type-toggle-container">
+                            <button type="button" class="type-toggle-btn active" id="toggleMcqBtn">Multiple Choice (MCQ)</button>
+                            <button type="button" class="type-toggle-btn" id="toggleStructuredBtn">Structured / Open</button>
+                        </div>
+                    </div>
 
-    <div id="previewArea" style="display:none; margin-top: 30px;">
-        <h2 style="text-align: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Preview Extracted Content</h2>
-        <div id="previewContent" style="margin-top: 20px;"></div>
-        <button id="confirmBtn" style="background: #10b981; margin-top: 20px;">Confirm & Download QTI</button>
-        <button id="cancelBtn" style="background: #ef4444; margin-top: 10px;">Cancel / Start Over</button>
-    </div>
+                    <!-- Tabs -->
+                    <div class="editor-tabs">
+                        <button type="button" class="tab-btn active" id="tabPreviewBtn">👁️ Visual</button>
+                        <button type="button" class="tab-btn" id="tabCodeBtn">💻 HTML</button>
+                    </div>
 
-    <div class="instructions" id="instructionsSection">
-        <h2>How to format your document</h2>
-        <ul>
-            <li>Start each question with a number (e.g. <b>1 What is...</b>)</li>
-            <li><b>For best image quality:</b> Also upload the same document saved as PDF. In Word, click <b>File → Save As → PDF</b>. The converter will use the PDF to extract pixel-perfect diagrams (with text overlays baked in).</li>
-            <li>MCQ options should be labelled with <b>A B C D</b></li>
-            <li>Structured questions will be extracted as a whole (including parts/subparts).</li>
-            <li>Indents (e.g., a), (i), etc) should not be used; replace them with plain text instead.</li>
-            <li>If you have answers to the questions, append them at the bottom of the document and begin the answer segment with capitalised text <b>ANSWERS</b>.</li>
-            <li>Answers for parts/subparts should begin with the question number for the first part/subpart but not the subsequent parts/subparts. Refer to sample document question 4's answers — <b>"4"</b> only appears once.</li>
-        </ul>
+                    <!-- Editor Panes -->
+                    <div class="editor-panes">
+                        <!-- Preview Pane -->
+                        <div class="editor-pane active" id="panePreview">
+                            <div class="pane-label" style="margin-bottom: 8px;">Visual Editor</div>
+                            <div class="wysiwyg-toolbar">
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('undo')" title="Undo">↩️</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('redo')" title="Redo">↪️</button>
+                                <div class="toolbar-separator"></div>
+                                <select class="toolbar-select" onchange="formatDoc('formatBlock', this.value); this.selectedIndex=0;" title="Block Style">
+                                    <option value="" disabled selected>Style</option>
+                                    <option value="&lt;p&gt;">Paragraph</option>
+                                    <option value="&lt;h1&gt;">Heading 1</option>
+                                    <option value="&lt;h2&gt;">Heading 2</option>
+                                    <option value="&lt;h3&gt;">Heading 3</option>
+                                    <option value="&lt;h4&gt;">Heading 4</option>
+                                    <option value="&lt;pre&gt;">Preformatted</option>
+                                </select>
+                                <div class="toolbar-separator"></div>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('bold')" title="Bold"><b>B</b></button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('italic')" title="Italic"><i>I</i></button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('underline')" title="Underline"><u>U</u></button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('strikeThrough')" title="Strikethrough"><s>S</s></button>
+                                <div class="toolbar-separator"></div>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('superscript')" title="Superscript">x<sup>2</sup></button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('subscript')" title="Subscript">x<sub>2</sub></button>
+                                <div class="toolbar-separator"></div>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('justifyLeft')" title="Align Left">Align L</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('justifyCenter')" title="Align Center">Align C</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('justifyRight')" title="Align Right">Align R</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('justifyFull')" title="Justify">Align J</button>
+                                <div class="toolbar-separator"></div>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('insertUnorderedList')" title="Bullet List">List •</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('insertOrderedList')" title="Numbered List">List 1.</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('outdent')" title="Decrease Indent">Indent -</button>
+                                <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatDoc('indent')" title="Increase Indent">Indent +</button>
+                            </div>
+                            <div class="preview-box" id="htmlPreview" contenteditable="true"></div>
+                        </div>
 
-        <div class="sample-container">
-            <img id="sampleImage"
-                 src="{{ url_for('static', filename='sample_doc.png') }}"
-                 alt="Sample document">
-            <div style="font-size:13px;color:#666;margin-top:6px;">
-                Click image to zoom
+                        <!-- Code Pane -->
+                        <div class="editor-pane" id="paneCode">
+                            <div class="pane-label" style="margin-bottom: 8px;">HTML Editor</div>
+                            <textarea class="code-editor" id="htmlCodeEditor" placeholder="Enter question stem HTML code..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- MCQ Option Editors (Shown only for MCQ) -->
+                    <div class="options-editor-card" id="optionsEditorCard" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0; font-size: 16px;">Answers Choices & Key</h3>
+                            <button type="button" class="secondary" id="addOptionBtn" style="padding: 4px 8px; font-size: 12px;">➕ Add Choice Option</button>
+                        </div>
+                        <div id="optionsListContainer">
+                            <!-- Options rows injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Structured Answer Editor (Shown only for Structured) -->
+                    <div class="options-editor-card" id="structuredEditorCard" style="display: none;">
+                        <h3 style="margin: 0 0 12px 0; font-size: 16px;">Correct Answer Key</h3>
+                        <textarea class="option-input" id="structuredAnswerInput" style="width: 100%; min-height: 80px; box-sizing: border-box; resize: vertical;" placeholder="Type the expected correct response text..."></textarea>
+                    </div>
+
+                    <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+                        <button type="button" class="danger" id="deleteQuestionBtn">🗑️ Delete Question</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -313,17 +990,65 @@
 </div>
 
 <script>
+function getAnswerText(ansVal) {
+    if (!ansVal) return '';
+    if (typeof ansVal === 'string') return ansVal.trim();
+    if (Array.isArray(ansVal)) {
+        return ansVal.map(t => t[0] === 'text' ? t[1] : '').join(' ').trim();
+    }
+    return '';
+}
+
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const fileName = document.getElementById("fileName");
 
-const pdfDropZone = document.getElementById("pdfDropZone");
-const pdfFileInput = document.getElementById("pdfFileInput");
-const pdfFileName = document.getElementById("pdfFileName");
+const mainContainer = document.getElementById("mainContainer");
+const uploadSection = document.getElementById("uploadSection");
+const editorSection = document.getElementById("editorSection");
+const spinner = document.getElementById("spinner");
+const message = document.getElementById("message");
+const docTitle = document.getElementById("docTitle");
+
+// Sidebar elements
+const questionList = document.getElementById("questionList");
+const addQuestionBtn = document.getElementById("addQuestionBtn");
+const statTotal = document.getElementById("statTotal");
+const statMcq = document.getElementById("statMcq");
+const statStructured = document.getElementById("statStructured");
+
+// Active Editor elements
+const activeQNumTitle = document.getElementById("activeQNumTitle");
+const toggleMcqBtn = document.getElementById("toggleMcqBtn");
+const toggleStructuredBtn = document.getElementById("toggleStructuredBtn");
+
+// Tabs
+const tabPreviewBtn = document.getElementById("tabPreviewBtn");
+const tabCodeBtn = document.getElementById("tabCodeBtn");
+const panePreview = document.getElementById("panePreview");
+const paneCode = document.getElementById("paneCode");
+
+// Editor panes inputs
+const htmlPreview = document.getElementById("htmlPreview");
+const htmlCodeEditor = document.getElementById("htmlCodeEditor");
+
+// Options cards
+const optionsEditorCard = document.getElementById("optionsEditorCard");
+const optionsListContainer = document.getElementById("optionsListContainer");
+const addOptionBtn = document.getElementById("addOptionBtn");
+const structuredEditorCard = document.getElementById("structuredEditorCard");
+const structuredAnswerInput = document.getElementById("structuredAnswerInput");
+
+// Bottom pane actions
+const deleteQuestionBtn = document.getElementById("deleteQuestionBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const confirmBtn = document.getElementById("confirmBtn");
 
 let currentData = null;
+let activeQuestionIndex = -1;
+let activeQuestionType = 'mcq'; // 'mcq' or 'structured'
 
-/* --- DOCX drop zone --- */
+// File upload event listeners
 dropZone.addEventListener("click", () => fileInput.click());
 
 dropZone.addEventListener("dragover", e => {
@@ -351,50 +1076,112 @@ function updateFileName() {
     }
 }
 
-/* --- PDF drop zone --- */
-pdfDropZone.addEventListener("click", () => pdfFileInput.click());
-
-pdfDropZone.addEventListener("dragover", e => {
-    e.preventDefault();
-    pdfDropZone.classList.add("dragover");
-});
-
-pdfDropZone.addEventListener("dragleave", () => {
-    pdfDropZone.classList.remove("dragover");
-});
-
-pdfDropZone.addEventListener("drop", e => {
-    e.preventDefault();
-    pdfDropZone.classList.remove("dragover");
-    pdfFileInput.files = e.dataTransfer.files;
-    updatePdfFileName();
-});
-
-pdfFileInput.addEventListener("change", updatePdfFileName);
-
-function updatePdfFileName() {
-    if (pdfFileInput.files.length > 0) {
-        pdfFileName.textContent = "✅ " + pdfFileInput.files[0].name;
-        pdfDropZone.classList.add("has-file");
-    }
+// Convert tokens list to HTML string
+function tokensToHtml(tokens) {
+    if (!tokens) return '';
+    let html = '';
+    tokens.forEach(t => {
+        if (t[0] === 'text') {
+            let style = '';
+            if (t.length > 2 && t[2]) {
+                if (t[2] === 'center') style = ' style="text-align:center;"';
+                else if (t[2] === 'right') style = ' style="text-align:right;"';
+                else if (t[2] === 'both') style = ' style="text-align:justify;"';
+            }
+            if (t[1] === '') {
+                html += `<br/>\n`;
+            } else {
+                html += `<div${style}>${t[1]}</div>\n`;
+            }
+        } else if (t[0] === 'image') {
+            let style = '';
+            if (t.length > 2 && t[2]) {
+                if (t[2] === 'center') style = ' style="text-align:center;"';
+                else if (t[2] === 'right') style = ' style="text-align:right;"';
+            }
+            html += `<div${style}><img src="../assets/${t[1]}" alt="diagram"/></div>\n`;
+        } else if (t[0] === 'table') {
+            html += '<table border="1">\n';
+            t[1].forEach(row => {
+                html += '  <tr>\n';
+                row.forEach(cell => {
+                    html += `    <td>${cell}</td>\n`;
+                });
+                html += '  </tr>\n';
+            });
+            html += '</table>\n';
+        }
+    });
+    return html.trim();
 }
 
+// Render clean HTML preview in the browser (resolving relative assets paths to flask static URLs)
+function resolveHtmlPreview(htmlString, jobId) {
+    if (!htmlString) return '';
+    
+    // Replace ../assets/filename with actual flask static endpoint path /static/jobs/jobId/assets/filename
+    let resolved = htmlString.replace(/src=["']\.\.\/assets\/([^"']+)["']/g, (match, filename) => {
+        const imgSrc = `/static/jobs/${jobId}/assets/${filename}`;
+        return `src="${imgSrc}"`;
+    });
+
+    // Wrap images with visual crop button overlays
+    resolved = resolved.replace(/<img([^>]*?)src=["']\/static\/jobs\/([^\/]+)\/assets\/([^"']+)["']([^>]*?)>/g, (match, before, jid, filename, after) => {
+        const imgSrc = `/static/jobs/${jid}/assets/${filename}`;
+        return `<div class="img-wrapper" contenteditable="false"><button class="crop-btn" type="button" data-src="${imgSrc}" data-filename="${filename}">✂ Crop</button><img ${before} src="${imgSrc}" ${after}></div>`;
+    });
+
+    return resolved;
+}
+
+// Clean HTML from contenteditable preview (stripping wrappers and crop buttons)
+function cleanHtmlPreview(innerHTML) {
+    if (!innerHTML) return '';
+    let cleaned = innerHTML;
+
+    // Remove crop buttons
+    cleaned = cleaned.replace(/<button[^>]*?class=["']crop-btn["'][^>]*?>.*?<\/button>/g, '');
+
+    // Remove img-wrapper divs but preserve the img tag
+    cleaned = cleaned.replace(/<div[^>]*?class=["']img-wrapper["'][^>]*?>(.*?)<\/div>/g, '$1');
+
+    // Revert static URLs back to ../assets
+    cleaned = cleaned.replace(/src=["']\/static\/jobs\/[^\/]+\/assets\/([^"']+)["']/g, 'src="../assets/$1"');
+
+    // Remove any browser-injected contenteditable helper styles/attrs
+    cleaned = cleaned.replace(/\s*contenteditable=["']false["']/g, '');
+
+    return cleaned.trim();
+}
+
+// Start Over / Reset UI
+cancelBtn.addEventListener("click", () => {
+    if (!confirm("Are you sure you want to discard your edits and upload a new document?")) return;
+    currentData = null;
+    activeQuestionIndex = -1;
+    
+    mainContainer.classList.remove("editor-mode");
+    mainContainer.classList.add("upload-mode");
+    
+    uploadSection.style.display = "block";
+    editorSection.style.display = "none";
+    
+    document.getElementById("uploadForm").reset();
+    fileName.textContent = "";
+    dropZone.classList.remove("has-file");
+    message.innerHTML = "";
+});
+
+// Document Upload Submission
 document.getElementById("uploadForm").addEventListener("submit", async function(e) {
     e.preventDefault();
     if (!fileInput.files.length) return alert("Please select a DOCX file first.");
 
-    const spinner = document.getElementById("spinner");
-    const message = document.getElementById("message");
-
     spinner.style.display = "block";
     message.innerHTML = "";
-    document.getElementById("previewArea").style.display = "none";
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
-    if (pdfFileInput.files.length > 0) {
-        formData.append("pdf_file", pdfFileInput.files[0]);
-    }
 
     try {
         const response = await fetch("/upload", {
@@ -411,170 +1198,414 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
         }
 
         currentData = await response.json();
-        renderPreview(currentData);
         
-        // Hide upload form and instructions, show preview
-        document.getElementById("uploadForm").style.display = "none";
-        document.getElementById("instructionsSection").style.display = "none";
-        document.getElementById("previewArea").style.display = "block";
+        // Initialize HTML Stems for all questions
+        currentData.mcq_questions.forEach(q => {
+            if (q.stem_html === undefined) {
+                q.stem_html = tokensToHtml(q.tokens);
+            }
+        });
+        currentData.structured_questions.forEach(q => {
+            if (q.stem_html === undefined) {
+                q.stem_html = tokensToHtml(q.tokens);
+            }
+        });
 
-    } catch {
+        // Setup UI Title
+        const originalName = fileInput.files[0].name;
+        docTitle.textContent = originalName;
+        
+        // Show Editor Workspace
+        mainContainer.classList.remove("upload-mode");
+        mainContainer.classList.add("editor-mode");
+        uploadSection.style.display = "none";
+        editorSection.style.display = "block";
+
+        // Select first question
+        selectFirstQuestion();
+
+    } catch (err) {
         spinner.style.display = "none";
         message.innerHTML = `<div class="error">Server error during parsing. Please try again.</div>`;
     }
 });
 
-function renderTokens(tokens, jobId) {
-    let html = '';
-    tokens.forEach(t => {
-        if (t[0] === 'text') {
-            let style = '';
-            if (t.length > 2 && t[2]) {
-                if (t[2] === 'center') style = 'text-align: center;';
-                else if (t[2] === 'right') style = 'text-align: right;';
-                else if (t[2] === 'both') style = 'text-align: justify;';
+function selectFirstQuestion() {
+    renderSidebar();
+    const allQs = getSortedQuestionsList();
+    if (allQs.length > 0) {
+        loadQuestion(allQs[0].index, allQs[0].type);
+    } else {
+        // No questions extracted, clear editor workspace
+        activeQuestionIndex = -1;
+        activeQNumTitle.textContent = "No Questions";
+        htmlPreview.innerHTML = '<p style="color:#94a3b8; font-style:italic;">No questions loaded.</p>';
+        htmlCodeEditor.value = '';
+    }
+}
+
+// Get unified list of all questions sorted numerically
+function getSortedQuestionsList() {
+    const list = [];
+    currentData.mcq_questions.forEach((q, idx) => {
+        list.push({ qnum: q.qnum, type: 'mcq', index: idx, qObj: q });
+    });
+    currentData.structured_questions.forEach((q, idx) => {
+        list.push({ qnum: q.qnum, type: 'structured', index: idx, qObj: q });
+    });
+    
+    list.sort((a, b) => {
+        const numA = parseInt(a.qnum.match(/\d+/) || 0);
+        const numB = parseInt(b.qnum.match(/\d+/) || 0);
+        return numA - numB;
+    });
+    return list;
+}
+
+// Render Sidebar List
+function renderSidebar() {
+    const allQs = getSortedQuestionsList();
+    
+    // Update stats
+    statTotal.textContent = allQs.length;
+    statMcq.textContent = currentData.mcq_questions.length;
+    statStructured.textContent = currentData.structured_questions.length;
+    
+    questionList.innerHTML = '';
+    
+    allQs.forEach((item, listIdx) => {
+        const q = item.qObj;
+        const qnum = q.qnum;
+        
+        const qitem = document.createElement("button");
+        qitem.className = `question-item ${item.type === activeQuestionType && item.index === activeQuestionIndex ? 'active' : ''}`;
+        qitem.type = "button";
+        qitem.onclick = () => loadQuestion(item.index, item.type);
+        
+        // Check for images
+        let hasImage = false;
+        if (q.stem_html) {
+            hasImage = q.stem_html.includes('<img') || q.stem_html.includes('src=');
+        } else if (q.tokens) {
+            hasImage = q.tokens.some(t => t[0] === 'image');
+        }
+
+        // Check for correct answer set
+        let hasAnswer = false;
+        if (currentData.answers && currentData.answers[qnum]) {
+            const ansVal = currentData.answers[qnum];
+            const ansText = getAnswerText(ansVal);
+            if (item.type === 'mcq') {
+                hasAnswer = /^[a-f]$/i.test(ansText);
+            } else {
+                hasAnswer = ansText.length > 0;
             }
-            html += `<p style="${style}">${t[1]}</p>`;
-        } else if (t[0] === 'image') {
-            let style = '';
-            if (t.length > 2 && t[2]) {
-                if (t[2] === 'center') style = 'text-align: center;';
-                else if (t[2] === 'right') style = 'text-align: right;';
-            }
-            const imgSrc = `/static/jobs/${jobId}/assets/${t[1]}`;
-            html += `<div style="${style}"><div class="img-wrapper"><button class="crop-btn" data-src="${imgSrc}" data-filename="${t[1]}">✂ Crop</button><img src="${imgSrc}" alt="Extracted Image"></div></div>`;
-        } else if (t[0] === 'table') {
-            html += '<table>';
-            t[1].forEach(row => {
-                html += '<tr>';
-                row.forEach(cell => html += `<td>${cell}</td>`);
-                html += '</tr>';
-            });
-            html += '</table>';
+        }
+        
+        qitem.innerHTML = `
+            <div class="question-item-left">
+                <span class="qnum">Q${qnum}</span>
+                <span class="badge ${item.type}">${item.type === 'mcq' ? 'MCQ' : 'Open'}</span>
+            </div>
+            <div class="badge-icons">
+                ${hasImage ? '<span class="badge-icon" title="Contains Image">🖼️</span>' : ''}
+                ${hasAnswer ? '<span class="badge-icon" style="color:var(--success)" title="Answer Set">✅</span>' : '<span class="badge-icon" style="color:var(--warning)" title="Missing Answer Key">⚠️</span>'}
+            </div>
+        `;
+        
+        questionList.appendChild(qitem);
+    });
+}
+
+// Load Question into workspace
+function loadQuestion(index, type) {
+    activeQuestionIndex = index;
+    activeQuestionType = type;
+    
+    // Highlight sidebar items
+    const items = questionList.querySelectorAll(".question-item");
+    const allQs = getSortedQuestionsList();
+    allQs.forEach((item, listIdx) => {
+        const active = (item.type === type && item.index === index);
+        if (items[listIdx]) {
+            if (active) items[listIdx].classList.add("active");
+            else items[listIdx].classList.remove("active");
         }
     });
-    return html;
+    
+    const qList = type === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const q = qList[index];
+    
+    // Update Header Title
+    activeQNumTitle.textContent = `Question ${q.qnum}`;
+    
+    // Set active type segmented buttons
+    if (type === 'mcq') {
+        toggleMcqBtn.classList.add("active");
+        toggleStructuredBtn.classList.remove("active");
+        
+        optionsEditorCard.style.display = "block";
+        structuredEditorCard.style.display = "none";
+        
+        // Render Options choices
+        renderMCQOptions(q);
+    } else {
+        toggleMcqBtn.classList.remove("active");
+        toggleStructuredBtn.classList.add("active");
+        
+        optionsEditorCard.style.display = "none";
+        structuredEditorCard.style.display = "block";
+        
+        // Render Structured correct answer
+        let ansText = "";
+        if (currentData.answers && currentData.answers[q.qnum]) {
+            const ansVal = currentData.answers[q.qnum];
+            if (typeof ansVal === 'string') ansText = ansVal;
+            else if (Array.isArray(ansVal)) {
+                // Convert token answers array to string
+                ansText = ansVal.map(t => t[0] === 'text' ? t[1] : `[${t[0]}]`).join(' ').trim();
+            }
+        }
+        structuredAnswerInput.value = ansText;
+    }
+    
+    // Set code editor value
+    htmlCodeEditor.value = q.stem_html || '';
+    
+    // Render live preview
+    updateLivePreview(q.stem_html);
 }
 
-function renderPreview(data) {
-    const area = document.getElementById('previewContent');
-    let html = '';
+// Render live previews in the workspace HTML boxes
+function updateLivePreview(htmlString) {
+    htmlPreview.innerHTML = resolveHtmlPreview(htmlString, currentData.job_id);
+}
 
-    const allQuestions = [...data.mcq_questions, ...data.structured_questions].sort((a, b) => parseInt(a.qnum) - parseInt(b.qnum));
+// HTML Editor live synchronization listener
+htmlCodeEditor.addEventListener("input", (e) => {
+    const val = e.target.value;
+    saveActiveStemHtml(val);
+});
 
-    if (allQuestions.length === 0) {
-        html = "<p style='text-align:center; color:#666;'>No questions were successfully extracted. Please check the document format.</p>";
-    }
+// Visual Editor live synchronization listener
+htmlPreview.addEventListener("input", () => {
+    const val = htmlPreview.innerHTML;
+    const cleaned = cleanHtmlPreview(val);
+    saveActiveStemHtml(cleaned);
+});
 
-    allQuestions.forEach(q => {
-        html += `<div class="question-card">`;
-        html += `<h3 style="margin-top:0;">Question ${q.qnum}</h3>`;
-        html += renderTokens(q.tokens, data.job_id);
+function saveActiveStemHtml(val) {
+    const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const q = qList[activeQuestionIndex];
+    q.stem_html = val;
+}
+
+// Render options inputs for MCQ
+function renderMCQOptions(q) {
+    optionsListContainer.innerHTML = '';
+    
+    if (!q.options) q.options = [];
+    
+    const letters = ["a", "b", "c", "d", "e", "f"];
+    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toLowerCase();
+    
+    q.options.forEach((opt, idx) => {
+        const letter = letters[idx] || String.fromCharCode(97 + idx);
+        const uppercaseLetter = letter.toUpperCase();
+        const isChecked = (currentAnswer === letter);
         
-        if (q.options && q.options.length > 0) {
-            html += `<ul class="options-list">`;
-            q.options.forEach((opt, idx) => {
-                const letter = String.fromCharCode(65 + idx);
-                html += `<li><strong>${letter})</strong> ${opt}</li>`;
-            });
-            html += `</ul>`;
-        }
-
-        if (data.answers[q.qnum]) {
-            const ansHtml = renderTokens(data.answers[q.qnum], data.job_id);
-            html += `<div class="answer-box"><strong>Extracted Answer:</strong> ${ansHtml}</div>`;
-        } else {
-            html += `<div class="answer-box" style="background:#fef08a; color:#854d0e;"><strong>No Answer Extracted</strong></div>`;
-        }
-        
-        html += `</div>`;
+        const optionRow = document.createElement("div");
+        optionRow.className = "option-row";
+        optionRow.innerHTML = `
+            <span class="option-letter">${uppercaseLetter}</span>
+            <input type="text" class="option-input" value="${escapeHtmlAttribute(opt)}" placeholder="Choice option description" oninput="updateMCQOptionText(${idx}, this.value)">
+            <input type="radio" class="option-radio" name="correctAnswerRadio" ${isChecked ? 'checked' : ''} onchange="selectCorrectMCQAnswer('${letter}')" title="Set as correct answer">
+            <div class="option-actions">
+                <button type="button" class="danger" style="padding: 6px 10px; font-size:12px;" onclick="deleteMCQOption(${idx})">✕</button>
+            </div>
+        `;
+        optionsListContainer.appendChild(optionRow);
     });
-
-    area.innerHTML = html;
-}
-
-document.getElementById("cancelBtn").addEventListener("click", () => {
-    currentData = null;
-    document.getElementById("uploadForm").style.display = "block";
-    document.getElementById("uploadForm").reset();
-    fileName.textContent = "";
-    pdfFileName.textContent = "";
-    dropZone.classList.remove("has-file");
-    pdfDropZone.classList.remove("has-file");
-    document.getElementById("instructionsSection").style.display = "block";
-    document.getElementById("previewArea").style.display = "none";
-    document.getElementById("message").innerHTML = "";
-});
-
-document.getElementById("confirmBtn").addEventListener("click", async function() {
-    const btn = this;
-    const message = document.getElementById("message");
-    btn.innerText = "Generating ZIP...";
-    btn.disabled = true;
-    message.innerHTML = "";
-
-    try {
-        const response = await fetch("/convert", {
-            method: "POST",
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(currentData)
-        });
-
-        if (!response.ok) {
-            const data = await response.json();
-            message.innerHTML = `<div class="error">${data.error}</div>`;
-            return;
-        }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-
-        let originalName = fileInput.files[0].name;
-        let baseName = originalName.replace(/\.[^/.]+$/, "");
-        
-        let now = new Date();
-        let yyyy = now.getFullYear();
-        let mm = String(now.getMonth() + 1).padStart(2, '0');
-        let dd = String(now.getDate()).padStart(2, '0');
-        let hh = String(now.getHours()).padStart(2, '0');
-        let min = String(now.getMinutes()).padStart(2, '0');
-        let ss = String(now.getSeconds()).padStart(2, '0');
-        let timestamp = `${yyyy}${mm}${dd}_${hh}${min}${ss}`;
-        
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${baseName}_${timestamp}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        message.innerHTML = "✅ Download complete! You can upload another file if needed.";
-        
-    } catch (err) {
-        message.innerHTML = `<div class="error">Error generating QTI.</div>`;
-    } finally {
-        btn.innerText = "Confirm & Download QTI";
-        btn.disabled = false;
+    
+    if (q.options.length === 0) {
+        optionsListContainer.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:13px; text-align:center;">No choices defined. Click "Add Choice Option" to start.</p>';
     }
-});
-
-/* Click-to-zoom image */
-const modal = document.getElementById("imageModal");
-const modalImg = document.getElementById("modalImg");
-const sampleImage = document.getElementById("sampleImage");
-
-if (sampleImage) {
-    sampleImage.onclick = () => {
-        modal.style.display = "flex";
-        modalImg.src = sampleImage.src;
-    };
 }
 
-modal.onclick = () => {
-    modal.style.display = "none";
+function escapeHtmlAttribute(str) {
+    if (!str) return '';
+    return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Global functions for inline option event handling
+window.updateMCQOptionText = function(idx, val) {
+    const q = currentData.mcq_questions[activeQuestionIndex];
+    q.options[idx] = val;
 };
 
-/* ---- Interactive Crop Tool ---- */
+window.selectCorrectMCQAnswer = function(letter) {
+    const q = currentData.mcq_questions[activeQuestionIndex];
+    if (!currentData.answers) currentData.answers = {};
+    currentData.answers[q.qnum] = letter;
+    renderSidebar(); // Update checkmark badge in sidebar
+};
+
+window.deleteMCQOption = function(idx) {
+    const q = currentData.mcq_questions[activeQuestionIndex];
+    q.options.splice(idx, 1);
+    
+    // Check if correct answer deleted
+    const letters = ["a", "b", "c", "d", "e", "f"];
+    const deletedLetter = letters[idx];
+    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toLowerCase();
+    if (currentAnswer === deletedLetter) {
+        delete currentData.answers[q.qnum];
+    } else if (currentAnswer) {
+        // Adjust indices
+        const originalIndex = letters.indexOf(currentAnswer);
+        if (originalIndex > idx) {
+            currentData.answers[q.qnum] = letters[originalIndex - 1];
+        }
+    }
+    
+    renderMCQOptions(q);
+    renderSidebar();
+};
+
+addOptionBtn.addEventListener("click", () => {
+    const q = currentData.mcq_questions[activeQuestionIndex];
+    if (!q.options) q.options = [];
+    
+    const nextIdx = q.options.length;
+    const nextLetter = String.fromCharCode(65 + nextIdx); // A, B, C...
+    q.options.push(`Option ${nextLetter}`);
+    
+    renderMCQOptions(q);
+});
+
+// Structured Answer input listener
+structuredAnswerInput.addEventListener("input", (e) => {
+    const val = e.target.value;
+    const q = currentData.structured_questions[activeQuestionIndex];
+    if (!currentData.answers) currentData.answers = {};
+    currentData.answers[q.qnum] = val;
+    renderSidebar(); // Update checkmark badge in sidebar
+});
+
+// Question Type switching
+toggleMcqBtn.addEventListener("click", () => {
+    switchQuestionType('mcq');
+});
+
+toggleStructuredBtn.addEventListener("click", () => {
+    switchQuestionType('structured');
+});
+
+function switchQuestionType(targetType) {
+    if (activeQuestionType === targetType) return;
+    
+    const sourceList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const targetList = targetType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    
+    const qObj = sourceList.splice(activeQuestionIndex, 1)[0];
+    
+    // Adjust data model properties
+    if (targetType === 'mcq') {
+        qObj.options = qObj.options || ["Option A", "Option B", "Option C", "Option D"];
+        // Reset answer to a
+        if (!currentData.answers) currentData.answers = {};
+        currentData.answers[qObj.qnum] = 'a';
+    } else {
+        delete qObj.options;
+        // Keep answer key as text or clear
+        const ansVal = currentData.answers[qObj.qnum];
+        currentData.answers[qObj.qnum] = typeof ansVal === 'string' ? ansVal : '';
+    }
+    
+    targetList.push(qObj);
+    
+    // Select the newly relocated question
+    renderSidebar();
+    const newIdx = targetList.length - 1;
+    loadQuestion(newIdx, targetType);
+}
+
+// Add/Delete Questions
+addQuestionBtn.addEventListener("click", () => {
+    // Find highest qnum
+    let maxNum = 0;
+    const allQs = getSortedQuestionsList();
+    allQs.forEach(item => {
+        const num = parseInt(item.qnum.match(/\d+/) || 0);
+        if (num > maxNum) maxNum = num;
+    });
+    
+    const newQNum = String(maxNum + 1);
+    const newQ = {
+        qnum: newQNum,
+        stem_html: `<div>Question ${newQNum} Stem Description</div>`,
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        tokens: []
+    };
+    
+    currentData.mcq_questions.push(newQ);
+    if (!currentData.answers) currentData.answers = {};
+    currentData.answers[newQNum] = 'a';
+    
+    renderSidebar();
+    
+    // Find index of new question
+    const newIndex = currentData.mcq_questions.length - 1;
+    loadQuestion(newIndex, 'mcq');
+    
+    // Scroll sidebar to bottom
+    questionList.scrollTop = questionList.scrollHeight;
+});
+
+deleteQuestionBtn.addEventListener("click", () => {
+    if (!confirm("Are you sure you want to delete this question?")) return;
+    
+    const list = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const qnum = list[activeQuestionIndex].qnum;
+    
+    list.splice(activeQuestionIndex, 1);
+    if (currentData.answers && currentData.answers[qnum]) {
+        delete currentData.answers[qnum];
+    }
+    
+    selectFirstQuestion();
+});
+
+// Tabs logic: toggle Visual and HTML panes
+tabPreviewBtn.addEventListener("click", () => switchTab('Preview'));
+tabCodeBtn.addEventListener("click", () => switchTab('Code'));
+
+function switchTab(tabName) {
+    tabPreviewBtn.classList.remove("active");
+    tabCodeBtn.classList.remove("active");
+    panePreview.classList.remove("active");
+    paneCode.classList.remove("active");
+    
+    const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const q = qList[activeQuestionIndex];
+    
+    if (tabName === 'Preview') {
+        tabPreviewBtn.classList.add("active");
+        panePreview.classList.add("active");
+        
+        // Sync Visual preview from latest code text
+        htmlPreview.innerHTML = resolveHtmlPreview(q.stem_html, currentData.job_id);
+    } else {
+        tabCodeBtn.classList.add("active");
+        paneCode.classList.add("active");
+        
+        // Sync HTML code from latest Visual innerHTML
+        htmlCodeEditor.value = q.stem_html || '';
+        htmlCodeEditor.focus();
+    }
+}
+
+// Interactive image cropping
 const cropModal = document.getElementById("cropModal");
 const cropImg = document.getElementById("cropImg");
 const cropStage = document.getElementById("cropStage");
@@ -584,21 +1615,18 @@ const cropDimBottom = document.getElementById("cropDimBottom");
 const cropDimLeft = document.getElementById("cropDimLeft");
 const cropDimRight = document.getElementById("cropDimRight");
 
-let cropState = { active: false, filename: '', startX: 0, startY: 0, x1: 0, y1: 0, x2: 0, y2: 0, imgW: 0, imgH: 0, triggerBtn: null };
+let cropState = { active: false, filename: '', startX: 0, startY: 0, x1: 0, y1: 0, x2: 0, y2: 0, imgW: 0, imgH: 0 };
 
-// Delegate click on crop buttons
 document.addEventListener('click', (e) => {
     if (e.target.classList.contains('crop-btn')) {
         e.preventDefault();
         e.stopPropagation();
         const src = e.target.dataset.src;
         cropState.filename = e.target.dataset.filename;
-        cropState.triggerBtn = e.target;
         cropImg.src = src;
         cropImg.onload = () => {
             cropState.imgW = cropImg.naturalWidth;
             cropState.imgH = cropImg.naturalHeight;
-            // Default selection: full image
             cropState.x1 = 0;
             cropState.y1 = 0;
             cropState.x2 = cropImg.clientWidth;
@@ -622,7 +1650,6 @@ function updateCropOverlay() {
     cropOverlay.style.width = (x2 - x1) + 'px';
     cropOverlay.style.height = (y2 - y1) + 'px';
 
-    // Dimming regions around the selection
     cropDimTop.style.left = '0'; cropDimTop.style.top = '0';
     cropDimTop.style.width = w + 'px'; cropDimTop.style.height = y1 + 'px';
 
@@ -645,7 +1672,7 @@ cropStage.addEventListener('mousedown', (e) => {
     cropState.x1 = cropState.startX;
     cropState.y1 = cropState.startY;
     cropState.x2 = cropState.startX;
-    cropState.y2 = cropState.startY;
+    cropState.y2 = cropState.startX;
     updateCropOverlay();
 });
 
@@ -675,13 +1702,11 @@ document.getElementById('cropConfirmBtn').addEventListener('click', async () => 
     const displayW = cropImg.clientWidth;
     const displayH = cropImg.clientHeight;
 
-    // Normalize to 0-1 fractions
     const left = Math.min(cropState.x1, cropState.x2) / displayW;
     const top = Math.min(cropState.y1, cropState.y2) / displayH;
     const right = Math.max(cropState.x1, cropState.x2) / displayW;
     const bottom = Math.max(cropState.y1, cropState.y2) / displayH;
 
-    // Skip if selection is basically the full image
     if (left < 0.01 && top < 0.01 && right > 0.99 && bottom > 0.99) {
         cropModal.classList.remove('active');
         return;
@@ -699,23 +1724,97 @@ document.getElementById('cropConfirmBtn').addEventListener('click', async () => 
         });
         const result = await resp.json();
         if (result.new_filename) {
-            // Update the data model so the QTI download uses the cropped version
-            const allQ = [...currentData.mcq_questions, ...currentData.structured_questions];
-            for (const q of allQ) {
-                for (const token of q.tokens) {
-                    if (token[0] === 'image' && token[1] === cropState.filename) {
-                        token[1] = result.new_filename;
-                    }
-                }
+            // Update the filename reference in active question stem HTML
+            const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+            const q = qList[activeQuestionIndex];
+            
+            // Globally replace the old filename with the cropped filename in stem HTML
+            if (q.stem_html) {
+                q.stem_html = q.stem_html.replace(cropState.filename, result.new_filename);
+                htmlCodeEditor.value = q.stem_html;
             }
+            
             // Re-render preview
-            renderPreview(currentData);
+            updateLivePreview(q.stem_html);
         }
     } catch (err) {
         alert('Crop failed: ' + err.message);
     }
     cropModal.classList.remove('active');
 });
+
+// Confirm & Download QTI package
+confirmBtn.addEventListener("click", async function() {
+    const btn = this;
+    btn.innerHTML = "⏳ Generating ZIP...";
+    btn.disabled = true;
+
+    try {
+        // If we are currently in Visual Preview mode, make sure we clean and save the final HTML state from contenteditable
+        if (tabPreviewBtn.classList.contains("active")) {
+            const val = htmlPreview.innerHTML;
+            const cleaned = cleanHtmlPreview(val);
+            saveActiveStemHtml(cleaned);
+        }
+
+        const response = await fetch("/convert", {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentData)
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            alert("Error: " + data.error);
+            return;
+        }
+
+        let baseName = "converted_qti";
+        if (fileInput.files && fileInput.files.length > 0) {
+            baseName = fileInput.files[0].name.replace(/\.[^/.]+$/, "");
+        } else if (currentData && currentData.filename) {
+            baseName = currentData.filename.replace(/\.[^/.]+$/, "");
+        }
+        
+        let now = new Date();
+        let timestamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+        
+        const filename = `${baseName}_qti_${timestamp}.zip`;
+        window.location.href = `/download_zip/${currentData.job_id}?filename=${encodeURIComponent(filename)}`;
+        
+    } catch (err) {
+        alert("Failed to compile QTI Package.");
+    } finally {
+        btn.innerHTML = "📥 Download QTI Package";
+        btn.disabled = false;
+    }
+});
+
+// Zoom modal for sample image
+const zoomModal = document.getElementById("imageModal");
+const modalImg = document.getElementById("modalImg");
+const sampleImage = document.getElementById("sampleImage");
+
+if (sampleImage) {
+    sampleImage.onclick = () => {
+        zoomModal.style.display = "flex";
+        modalImg.src = sampleImage.src;
+    };
+}
+
+zoomModal.onclick = () => {
+    zoomModal.style.display = "none";
+};
+
+// Rich text editor toolbar actions
+window.formatDoc = function(command, value = null) {
+    document.execCommand(command, false, value);
+    htmlPreview.focus();
+    
+    // Trigger input event to sync html changes immediately
+    const event = new Event('input', { bubbles: true });
+    htmlPreview.dispatchEvent(event);
+};
 </script>
 
 </body>

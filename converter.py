@@ -8,89 +8,10 @@ import string
 import xml.sax.saxutils as saxutils
 import lxml.etree as ET
 
-try:
-    import fitz  # PyMuPDF
-except ImportError:
-    fitz = None
 
 
-def _extract_pdf_images(pdf_path, questions_with_images, assets_dir):
-    """
-    For each question that has an image placeholder, search for the question text
-    in the PDF, find the diagram region near it, and crop it as a high-fidelity PNG.
-    Uses a generous bounding box — users can fine-tune with the interactive crop tool.
-    Returns a dict mapping (qnum, image_index) -> new_filename.
-    """
-    if fitz is None:
-        return {}
 
-    doc = fitz.open(pdf_path)
-    replacements = {}
-
-    for qnum, search_text, img_index in questions_with_images:
-        search_str = search_text[:40].strip()
-        if not search_str:
-            continue
-
-        found_rect = None
-        target_page = None
-
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            rects = page.search_for(search_str)
-            if rects:
-                found_rect = rects[0]
-                target_page = page
-                break
-
-        if not target_page:
-            continue
-
-        # Collect all drawings and images on this page near/below the anchor text
-        anchor_y = found_rect.y1
-        drawings = target_page.get_drawings()
-        images_info = target_page.get_image_info()
-
-        diagram_rects = []
-        for d in drawings:
-            r = d["rect"]
-            if r.y0 > anchor_y - 30 and r.width > 20 and r.height > 10:
-                diagram_rects.append(r)
-        for img in images_info:
-            r = fitz.Rect(img["bbox"])
-            if r.y0 > anchor_y - 30 and r.width > 20 and r.height > 10:
-                diagram_rects.append(r)
-
-        if not diagram_rects:
-            continue
-
-        # Merge all nearby visual elements into one bounding box
-        final_rect = diagram_rects[0]
-        for r in diagram_rects[1:]:
-            final_rect |= r
-
-        # Use full page width on x-axis (diagrams always sit between text paragraphs)
-        # Only use y-axis bounds from the visual elements with gentle padding
-        final_rect.x0 = 0
-        final_rect.x1 = target_page.rect.x1
-        final_rect.y0 = max(0, final_rect.y0 - 15)
-        final_rect.y1 = min(target_page.rect.y1, final_rect.y1 + 15)
-
-        # Skip if bounding box is unreasonably large (entire page)
-        if final_rect.height > target_page.rect.height * 0.85:
-            continue
-
-        # Render at 150 DPI for crisp images
-        pix = target_page.get_pixmap(clip=final_rect, dpi=150)
-        new_filename = f"pdf_img_q{qnum}_{img_index}.png"
-        pix.save(os.path.join(assets_dir, new_filename))
-        replacements[(str(qnum), img_index)] = new_filename
-
-    doc.close()
-    return replacements
-
-
-def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
+def parse_docx_to_data(input_docx, job_dir):
     """
     Parses a DOCX file and extracts questions, options, and answers.
     It combines logic for both standard text paragraphs and table-based layouts.
@@ -153,14 +74,20 @@ def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
         alignment = child.xpath(".//w:jc/@w:val")
         align_val = alignment[0] if alignment else None
 
+        has_yielded = False
         if paragraph_text:
             yield ["text", paragraph_text, align_val]
+            has_yielded = True
 
         for node in child.iter():
             if node.tag.endswith('blip'):
                 rId = node.get(qn('r:embed'))
                 if rId:
                     yield ["image", rId, align_val]
+                    has_yielded = True
+
+        if not has_yielded:
+            yield ["text", "", align_val]
 
     def parse_table(child):
         table_data = []
@@ -336,6 +263,8 @@ def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
                 amatch = re.match(r'^(\d+[a-zA-Z]*[ivxlcdm]*)\.?\s*(.*)', text, re.I)
                 if amatch:
                     if current_answer_q is not None:
+                        while current_answer_tokens and current_answer_tokens[-1][0] == "text" and current_answer_tokens[-1][1] == "":
+                            current_answer_tokens.pop()
                         if current_answer_q in answers:
                             answers[current_answer_q].extend(current_answer_tokens)
                         else:
@@ -347,6 +276,9 @@ def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
                         current_answer_tokens.append(["text", cleaned, align_val])
                 else:
                     if current_answer_q is not None:
+                        if text == "":
+                            if current_answer_tokens and current_answer_tokens[-1][0] == "text" and current_answer_tokens[-1][1] == "":
+                                continue
                         current_answer_tokens.append(["text", text, align_val])
             continue
 
@@ -366,11 +298,16 @@ def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
                 reading_answers = True
                 continue
             if not text:
+                if current_tokens and current_tokens[-1][0] == "text" and current_tokens[-1][1] == "":
+                    continue
+                current_tokens.append(["text", "", align_val])
                 continue
 
             qmatch = question_regex.match(text)
             if qmatch:
                 if current_qnum is not None:
+                    while current_tokens and current_tokens[-1][0] == "text" and current_tokens[-1][1] == "":
+                        current_tokens.pop()
                     if options:
                         mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
                     else:
@@ -391,49 +328,21 @@ def parse_docx_to_data(input_docx, job_dir, pdf_path=None):
             current_tokens.append(["text", text, align_val])
 
     if current_answer_q is not None:
+        while current_answer_tokens and current_answer_tokens[-1][0] == "text" and current_answer_tokens[-1][1] == "":
+            current_answer_tokens.pop()
         if current_answer_q in answers:
             answers[current_answer_q].extend(current_answer_tokens)
         else:
             answers[current_answer_q] = current_answer_tokens
     if current_qnum is not None:
+        while current_tokens and current_tokens[-1][0] == "text" and current_tokens[-1][1] == "":
+            current_tokens.pop()
         if options:
             mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
         else:
             structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
 
-    # --- PDF Image Replacement Step ---
-    # If a PDF companion was uploaded, replace DOCX-extracted images with
-    # high-fidelity cropped images from the PDF.
-    if pdf_path and fitz is not None:
-        assets_dir = os.path.join(job_dir, "assets")
-        questions_with_images = []
 
-        all_questions = mcq_questions + structured_questions
-        for q in all_questions:
-            img_index = 0
-            for token in q.get("tokens", []):
-                if token[0] == "image":
-                    # Find the first text token to use as search anchor
-                    search_text = ""
-                    for t in q["tokens"]:
-                        if t[0] == "text":
-                            search_text = t[1]
-                            break
-                    questions_with_images.append((q["qnum"], search_text, img_index))
-                    img_index += 1
-
-        if questions_with_images:
-            replacements = _extract_pdf_images(pdf_path, questions_with_images, assets_dir)
-
-            # Apply replacements to question tokens
-            for q in all_questions:
-                img_index = 0
-                for token in q.get("tokens", []):
-                    if token[0] == "image":
-                        key = (str(q["qnum"]), img_index)
-                        if key in replacements:
-                            token[1] = replacements[key]
-                        img_index += 1
 
     return {
         "mcq_questions": mcq_questions,
@@ -452,6 +361,15 @@ def generate_qti_from_data(data, job_dir):
     mcq_questions = data.get("mcq_questions", [])
     structured_questions = data.get("structured_questions", [])
     answers = data.get("answers", {})
+
+    def ensure_xml_compliant_html(html_str):
+        if not html_str:
+            return ""
+        # Close unclosed img tags
+        html_str = re.sub(r'<img([^>]*?)(?<!/)>', r'<img\1/>', html_str)
+        # Close unclosed br tags
+        html_str = re.sub(r'<br([^>]*?)(?<!/)>', r'<br\1/>', html_str)
+        return html_str
 
     def random_id(length=3):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -475,7 +393,9 @@ def generate_qti_from_data(data, job_dir):
                 safe = saxutils.escape(val)
                 safe = safe.replace("&lt;","<").replace("&gt;",">")
 
-                if align_val == "center":
+                if val == "":
+                    html += "<br/>\n"
+                elif align_val == "center":
                     html += f"<div style='text-align:center'>{safe}</div>\n"
                 elif align_val == "right":
                     html += f"<div style='text-align:right'>{safe}</div>\n"
@@ -539,6 +459,9 @@ def generate_qti_from_data(data, job_dir):
     letters = ["a","b","c","d","e","f"]
 
     # -----------------------------
+    # GENERATE QTI ITEMS
+    # -----------------------------
+    # -----------------------------
     # MCQ QUESTIONS -> QTI
     # -----------------------------
     for q in mcq_questions:
@@ -547,7 +470,13 @@ def generate_qti_from_data(data, job_dir):
         qnum_str = str(q["qnum"])
 
         if qnum_str in answers:
-            answer_text = answer_tokens_to_string(answers[qnum_str])
+            ans_val = answers[qnum_str]
+            if isinstance(ans_val, list):
+                answer_text = answer_tokens_to_string(ans_val)
+            else:
+                answer_text = str(ans_val)
+
+        answer_text = answer_text.strip().lower()
 
         num_match = re.search(r'\d+', qnum_str)
         qnum_int = int(num_match.group()) if num_match else 0
@@ -556,14 +485,17 @@ def generate_qti_from_data(data, job_dir):
 
         filename = os.path.join(items_dir, f"{item_id}.xml")
 
-        stem_html = tokens_to_html(q["tokens"])
+        stem_html = ensure_xml_compliant_html(q.get("stem_html", tokens_to_html(q["tokens"])))
 
         title_text = ""
-
-        for t in q["tokens"]:
-            if t[0] == "text":
-                title_text = t[1][:70]
-                break
+        if "stem_html" in q:
+            plain_stem = re.sub(r'<[^>]*>', '', q["stem_html"])
+            title_text = plain_stem[:70].strip()
+        else:
+            for t in q.get("tokens", []):
+                if t[0] == "text":
+                    title_text = t[1][:70]
+                    break
 
         safe_title = saxutils.escape(title_text)
 
@@ -589,7 +521,7 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
 </prompt>
 '''
 
-        for i, opt in enumerate(q["options"]):
+        for i, opt in enumerate(q.get("options", [])):
 
             if i >= len(letters):
                 break
@@ -610,7 +542,11 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
 
         item_refs.append(item_id)
 
-        imgs = [v for t in q["tokens"] if t[0]=="image" for v in [t[1]]]
+        if "stem_html" in q:
+            imgs = re.findall(r'src=["\'](?:.*?/)?([^"\']+)["\']', q["stem_html"])
+            imgs = [img for img in imgs if img.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))]
+        else:
+            imgs = [v for t in q.get("tokens", []) if t[0] == "image" for v in [t[1]]]
 
         item_images[item_id] = imgs
 
@@ -622,7 +558,11 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
         qnum_str = str(q["qnum"])
 
         if qnum_str in answers:
-            answer_text = answer_tokens_to_string(answers[qnum_str])
+            ans_val = answers[qnum_str]
+            if isinstance(ans_val, list):
+                answer_text = answer_tokens_to_string(ans_val)
+            else:
+                answer_text = str(ans_val)
 
         num_match = re.search(r'\d+', qnum_str)
         qnum_int = int(num_match.group()) if num_match else 0
@@ -630,7 +570,7 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
         item_id = f"Q{qnum_int:03d}_{random_id()}"
         filename = os.path.join(items_dir, f"{item_id}.xml")
 
-        stem_html = tokens_to_html(q["tokens"])
+        stem_html = ensure_xml_compliant_html(q.get("stem_html", tokens_to_html(q["tokens"])))
 
         xml = f'''<assessmentItem xmlns="http://www.imsglobal.org/xsd/imsqti_v2p1"
 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -659,7 +599,11 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
 
         item_refs.append(item_id)
 
-        imgs = [v for t in q["tokens"] if t[0]=="image" for v in [t[1]]]
+        if "stem_html" in q:
+            imgs = re.findall(r'src=["\'](?:.*?/)?([^"\']+)["\']', q["stem_html"])
+            imgs = [img for img in imgs if img.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))]
+        else:
+            imgs = [v for t in q.get("tokens", []) if t[0] == "image" for v in [t[1]]]
 
         item_images[item_id] = imgs
 
