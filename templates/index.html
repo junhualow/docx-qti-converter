@@ -954,7 +954,57 @@ button:disabled {
                     <!-- Structured Answer Editor (Shown only for Structured) -->
                     <div class="options-editor-card" id="structuredEditorCard" style="display: none;">
                         <h3 style="margin: 0 0 12px 0; font-size: 16px;">Correct Answer Key</h3>
-                        <textarea class="option-input" id="structuredAnswerInput" style="width: 100%; min-height: 80px; box-sizing: border-box; resize: vertical;" placeholder="Type the expected correct response text..."></textarea>
+                        
+                        <!-- Answer Tabs -->
+                        <div class="editor-tabs" style="margin-bottom: 12px;">
+                            <button type="button" class="tab-btn active" id="tabAnswerPreviewBtn">👁️ Visual</button>
+                            <button type="button" class="tab-btn" id="tabAnswerCodeBtn">💻 HTML</button>
+                        </div>
+                        
+                        <!-- Answer Panes -->
+                        <div class="editor-panes">
+                            <!-- Answer Preview Pane -->
+                            <div class="editor-pane active" id="paneAnswerPreview">
+                                <div class="wysiwyg-toolbar" id="answerToolbar" style="margin-bottom: 0px;">
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('undo')" title="Undo">↩️</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('redo')" title="Redo">↪️</button>
+                                    <div class="toolbar-separator"></div>
+                                    <select class="toolbar-select" onchange="formatAnswer('formatBlock', this.value); this.selectedIndex=0;" title="Block Style">
+                                        <option value="" disabled selected>Style</option>
+                                        <option value="&lt;p&gt;">Paragraph</option>
+                                        <option value="&lt;h1&gt;">Heading 1</option>
+                                        <option value="&lt;h2&gt;">Heading 2</option>
+                                        <option value="&lt;h3&gt;">Heading 3</option>
+                                        <option value="&lt;h4&gt;">Heading 4</option>
+                                        <option value="&lt;pre&gt;">Preformatted</option>
+                                    </select>
+                                    <div class="toolbar-separator"></div>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('bold')" title="Bold"><b>B</b></button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('italic')" title="Italic"><i>I</i></button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('underline')" title="Underline"><u>U</u></button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('strikeThrough')" title="Strikethrough"><s>S</s></button>
+                                    <div class="toolbar-separator"></div>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('superscript')" title="Superscript">x<sup>2</sup></button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('subscript')" title="Subscript">x<sub>2</sub></button>
+                                    <div class="toolbar-separator"></div>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('justifyLeft')" title="Align Left">Align L</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('justifyCenter')" title="Align Center">Align C</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('justifyRight')" title="Align Right">Align R</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('justifyFull')" title="Justify">Align J</button>
+                                    <div class="toolbar-separator"></div>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('insertUnorderedList')" title="Bullet List">List •</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('insertOrderedList')" title="Numbered List">List 1.</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('outdent')" title="Decrease Indent">Indent -</button>
+                                    <button type="button" class="toolbar-btn" onmousedown="event.preventDefault();" onclick="formatAnswer('indent')" title="Increase Indent">Indent +</button>
+                                </div>
+                                <div class="preview-box" id="answerPreview" contenteditable="true" style="border-top-left-radius: 0px; border-top-right-radius: 0px; min-height: 120px;"></div>
+                            </div>
+                            
+                            <!-- Answer Code Pane -->
+                            <div class="editor-pane" id="paneAnswerCode">
+                                <textarea class="code-editor" id="answerCodeEditor" style="min-height: 120px;" placeholder="Enter answer key HTML code..."></textarea>
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
@@ -992,7 +1042,9 @@ button:disabled {
 <script>
 function getAnswerText(ansVal) {
     if (!ansVal) return '';
-    if (typeof ansVal === 'string') return ansVal.trim();
+    if (typeof ansVal === 'string') {
+        return ansVal.replace(/<[^>]*>/g, '').trim();
+    }
     if (Array.isArray(ansVal)) {
         return ansVal.map(t => t[0] === 'text' ? t[1] : '').join(' ').trim();
     }
@@ -1037,7 +1089,12 @@ const optionsEditorCard = document.getElementById("optionsEditorCard");
 const optionsListContainer = document.getElementById("optionsListContainer");
 const addOptionBtn = document.getElementById("addOptionBtn");
 const structuredEditorCard = document.getElementById("structuredEditorCard");
-const structuredAnswerInput = document.getElementById("structuredAnswerInput");
+const tabAnswerPreviewBtn = document.getElementById("tabAnswerPreviewBtn");
+const tabAnswerCodeBtn = document.getElementById("tabAnswerCodeBtn");
+const paneAnswerPreview = document.getElementById("paneAnswerPreview");
+const paneAnswerCode = document.getElementById("paneAnswerCode");
+const answerPreview = document.getElementById("answerPreview");
+const answerCodeEditor = document.getElementById("answerCodeEditor");
 
 // Bottom pane actions
 const deleteQuestionBtn = document.getElementById("deleteQuestionBtn");
@@ -1211,6 +1268,21 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
             }
         });
 
+        // Initialize HTML answers if they are token arrays
+        if (currentData.answers) {
+            for (let qnum in currentData.answers) {
+                const ansVal = currentData.answers[qnum];
+                if (Array.isArray(ansVal)) {
+                    const isMcq = currentData.mcq_questions.some(q => q.qnum === qnum);
+                    if (isMcq) {
+                        currentData.answers[qnum] = getAnswerText(ansVal).toUpperCase();
+                    } else {
+                        currentData.answers[qnum] = tokensToHtml(ansVal);
+                    }
+                }
+            }
+        }
+
         // Setup UI Title
         const originalName = fileInput.files[0].name;
         docTitle.textContent = originalName;
@@ -1366,7 +1438,8 @@ function loadQuestion(index, type) {
                 ansText = ansVal.map(t => t[0] === 'text' ? t[1] : `[${t[0]}]`).join(' ').trim();
             }
         }
-        structuredAnswerInput.value = ansText;
+        answerCodeEditor.value = ansText;
+        updateAnswerLivePreview(ansText);
     }
     
     // Set code editor value
@@ -1406,12 +1479,12 @@ function renderMCQOptions(q) {
     
     if (!q.options) q.options = [];
     
-    const letters = ["a", "b", "c", "d", "e", "f"];
-    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toLowerCase();
+    const letters = ["A", "B", "C", "D", "E", "F"];
+    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toUpperCase();
     
     q.options.forEach((opt, idx) => {
-        const letter = letters[idx] || String.fromCharCode(97 + idx);
-        const uppercaseLetter = letter.toUpperCase();
+        const letter = letters[idx] || String.fromCharCode(65 + idx);
+        const uppercaseLetter = letter;
         const isChecked = (currentAnswer === letter);
         
         const optionRow = document.createElement("div");
@@ -1446,7 +1519,7 @@ window.updateMCQOptionText = function(idx, val) {
 window.selectCorrectMCQAnswer = function(letter) {
     const q = currentData.mcq_questions[activeQuestionIndex];
     if (!currentData.answers) currentData.answers = {};
-    currentData.answers[q.qnum] = letter;
+    currentData.answers[q.qnum] = letter.toUpperCase();
     renderSidebar(); // Update checkmark badge in sidebar
 };
 
@@ -1455,9 +1528,9 @@ window.deleteMCQOption = function(idx) {
     q.options.splice(idx, 1);
     
     // Check if correct answer deleted
-    const letters = ["a", "b", "c", "d", "e", "f"];
+    const letters = ["A", "B", "C", "D", "E", "F"];
     const deletedLetter = letters[idx];
-    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toLowerCase();
+    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toUpperCase();
     if (currentAnswer === deletedLetter) {
         delete currentData.answers[q.qnum];
     } else if (currentAnswer) {
@@ -1483,14 +1556,30 @@ addOptionBtn.addEventListener("click", () => {
     renderMCQOptions(q);
 });
 
-// Structured Answer input listener
-structuredAnswerInput.addEventListener("input", (e) => {
+// Answer HTML Editor live synchronization listener
+answerCodeEditor.addEventListener("input", (e) => {
     const val = e.target.value;
-    const q = currentData.structured_questions[activeQuestionIndex];
+    saveActiveAnswerHtml(val);
+});
+
+// Answer Visual Editor live synchronization listener
+answerPreview.addEventListener("input", () => {
+    const val = answerPreview.innerHTML;
+    const cleaned = cleanHtmlPreview(val);
+    saveActiveAnswerHtml(cleaned);
+});
+
+function saveActiveAnswerHtml(val) {
+    const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const q = qList[activeQuestionIndex];
     if (!currentData.answers) currentData.answers = {};
     currentData.answers[q.qnum] = val;
     renderSidebar(); // Update checkmark badge in sidebar
-});
+}
+
+function updateAnswerLivePreview(htmlString) {
+    answerPreview.innerHTML = resolveHtmlPreview(htmlString, currentData.job_id);
+}
 
 // Question Type switching
 toggleMcqBtn.addEventListener("click", () => {
@@ -1512,9 +1601,9 @@ function switchQuestionType(targetType) {
     // Adjust data model properties
     if (targetType === 'mcq') {
         qObj.options = qObj.options || ["Option A", "Option B", "Option C", "Option D"];
-        // Reset answer to a
+        // Reset answer to A
         if (!currentData.answers) currentData.answers = {};
-        currentData.answers[qObj.qnum] = 'a';
+        currentData.answers[qObj.qnum] = 'A';
     } else {
         delete qObj.options;
         // Keep answer key as text or clear
@@ -1550,7 +1639,7 @@ addQuestionBtn.addEventListener("click", () => {
     
     currentData.mcq_questions.push(newQ);
     if (!currentData.answers) currentData.answers = {};
-    currentData.answers[newQNum] = 'a';
+    currentData.answers[newQNum] = 'A';
     
     renderSidebar();
     
@@ -1602,6 +1691,36 @@ function switchTab(tabName) {
         // Sync HTML code from latest Visual innerHTML
         htmlCodeEditor.value = q.stem_html || '';
         htmlCodeEditor.focus();
+    }
+}
+
+// Answer Tabs logic: toggle Visual and HTML panes for Answer Key
+tabAnswerPreviewBtn.addEventListener("click", () => switchAnswerTab('Preview'));
+tabAnswerCodeBtn.addEventListener("click", () => switchAnswerTab('Code'));
+
+function switchAnswerTab(tabName) {
+    tabAnswerPreviewBtn.classList.remove("active");
+    tabAnswerCodeBtn.classList.remove("active");
+    paneAnswerPreview.classList.remove("active");
+    paneAnswerCode.classList.remove("active");
+    
+    const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
+    const q = qList[activeQuestionIndex];
+    const ansText = currentData.answers[q.qnum] || '';
+    
+    if (tabName === 'Preview') {
+        tabAnswerPreviewBtn.classList.add("active");
+        paneAnswerPreview.classList.add("active");
+        
+        // Sync Visual preview from latest code text
+        answerPreview.innerHTML = resolveHtmlPreview(ansText, currentData.job_id);
+    } else {
+        tabAnswerCodeBtn.classList.add("active");
+        paneAnswerCode.classList.add("active");
+        
+        // Sync HTML code from latest Visual innerHTML
+        answerCodeEditor.value = ansText;
+        answerCodeEditor.focus();
     }
 }
 
@@ -1730,12 +1849,21 @@ document.getElementById('cropConfirmBtn').addEventListener('click', async () => 
             
             // Globally replace the old filename with the cropped filename in stem HTML
             if (q.stem_html) {
-                q.stem_html = q.stem_html.replace(cropState.filename, result.new_filename);
+                q.stem_html = q.stem_html.replaceAll(cropState.filename, result.new_filename);
                 htmlCodeEditor.value = q.stem_html;
             }
+
+            // Globally replace the old filename with the cropped filename in answer HTML
+            if (activeQuestionType === 'structured' && currentData.answers && currentData.answers[q.qnum]) {
+                currentData.answers[q.qnum] = currentData.answers[q.qnum].replaceAll(cropState.filename, result.new_filename);
+                answerCodeEditor.value = currentData.answers[q.qnum];
+            }
             
-            // Re-render preview
+            // Re-render previews
             updateLivePreview(q.stem_html);
+            if (activeQuestionType === 'structured') {
+                updateAnswerLivePreview(currentData.answers[q.qnum] || '');
+            }
         }
     } catch (err) {
         alert('Crop failed: ' + err.message);
@@ -1755,6 +1883,12 @@ confirmBtn.addEventListener("click", async function() {
             const val = htmlPreview.innerHTML;
             const cleaned = cleanHtmlPreview(val);
             saveActiveStemHtml(cleaned);
+        }
+
+        if (activeQuestionType === 'structured' && tabAnswerPreviewBtn.classList.contains("active")) {
+            const val = answerPreview.innerHTML;
+            const cleaned = cleanHtmlPreview(val);
+            saveActiveAnswerHtml(cleaned);
         }
 
         const response = await fetch("/convert", {
@@ -1814,6 +1948,16 @@ window.formatDoc = function(command, value = null) {
     // Trigger input event to sync html changes immediately
     const event = new Event('input', { bubbles: true });
     htmlPreview.dispatchEvent(event);
+};
+
+// Rich text editor toolbar actions for answer key
+window.formatAnswer = function(command, value = null) {
+    document.execCommand(command, false, value);
+    answerPreview.focus();
+    
+    // Trigger input event to sync html changes immediately
+    const event = new Event('input', { bubbles: true });
+    answerPreview.dispatchEvent(event);
 };
 </script>
 

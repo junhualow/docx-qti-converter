@@ -456,7 +456,7 @@ def generate_qti_from_data(data, job_dir):
 
         return result.strip()
 
-    letters = ["a","b","c","d","e","f"]
+    letters = ["A","B","C","D","E","F"]
 
     # -----------------------------
     # GENERATE QTI ITEMS
@@ -476,7 +476,8 @@ def generate_qti_from_data(data, job_dir):
             else:
                 answer_text = str(ans_val)
 
-        answer_text = answer_text.strip().lower()
+        answer_text = re.sub(r'<[^>]*>', '', answer_text)
+        answer_text = answer_text.strip().upper()
 
         num_match = re.search(r'\d+', qnum_str)
         qnum_int = int(num_match.group()) if num_match else 0
@@ -564,6 +565,8 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
             else:
                 answer_text = str(ans_val)
 
+        answer_text = ensure_xml_compliant_html(answer_text)
+
         num_match = re.search(r'\d+', qnum_str)
         qnum_int = int(num_match.group()) if num_match else 0
 
@@ -605,7 +608,16 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
         else:
             imgs = [v for t in q.get("tokens", []) if t[0] == "image" for v in [t[1]]]
 
-        item_images[item_id] = imgs
+        ans_imgs = []
+        if answer_text:
+            ans_imgs = re.findall(r'src=["\'](?:.*?/)?([^"\']+)["\']', answer_text)
+            ans_imgs = [img for img in ans_imgs if img.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))]
+
+        combined_imgs = []
+        for img in (imgs + ans_imgs):
+            if img not in combined_imgs:
+                combined_imgs.append(img)
+        item_images[item_id] = combined_imgs
 
     # -----------------------------
     # assessment_test.xml
