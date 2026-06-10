@@ -210,23 +210,7 @@ h1, h2, h3, h4 {
     font-size: 14px;
 }
 
-.badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 9999px;
-    text-transform: uppercase;
-}
 
-.badge.mcq {
-    background: rgba(59, 130, 246, 0.1);
-    color: var(--secondary);
-}
-
-.badge.structured {
-    background: rgba(139, 92, 246, 0.1);
-    color: #8b5cf6;
-}
 
 .badge-icons {
     display: flex;
@@ -459,6 +443,8 @@ h1, h2, h3, h4 {
     border: 1px solid var(--border-color);
     padding: 8px;
 }
+
+
 
 /* Options editor */
 .options-editor-card {
@@ -854,17 +840,9 @@ button:disabled {
             <!-- Sidebar: Question Navigator -->
             <div class="editor-sidebar">
                 <div class="sidebar-stats">
-                    <div class="stat-item">
+                    <div class="stat-item" style="grid-column: span 3;">
                         <div class="stat-num" id="statTotal">0</div>
-                        Total Qs
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-num" id="statMcq">0</div>
-                        MCQ
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-num" id="statStructured">0</div>
-                        Structured
+                        Total Questions
                     </div>
                 </div>
                 <div class="question-list" id="questionList">
@@ -880,10 +858,6 @@ button:disabled {
                         <div>
                             <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Editing Question</span>
                             <h2 style="margin: 4px 0 0 0;" id="activeQNumTitle">Question -</h2>
-                        </div>
-                        <div class="type-toggle-container">
-                            <button type="button" class="type-toggle-btn active" id="toggleMcqBtn">Multiple Choice (MCQ)</button>
-                            <button type="button" class="type-toggle-btn" id="toggleStructuredBtn">Structured / Open</button>
                         </div>
                     </div>
 
@@ -940,19 +914,8 @@ button:disabled {
                         </div>
                     </div>
 
-                    <!-- MCQ Option Editors (Shown only for MCQ) -->
-                    <div class="options-editor-card" id="optionsEditorCard" style="display: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h3 style="margin: 0; font-size: 16px;">Answers Choices & Key</h3>
-                            <button type="button" class="secondary" id="addOptionBtn" style="padding: 4px 8px; font-size: 12px;">➕ Add Choice Option</button>
-                        </div>
-                        <div id="optionsListContainer">
-                            <!-- Options rows injected here -->
-                        </div>
-                    </div>
-
-                    <!-- Structured Answer Editor (Shown only for Structured) -->
-                    <div class="options-editor-card" id="structuredEditorCard" style="display: none;">
+                    <!-- Structured Answer Editor (Shown for all questions) -->
+                    <div class="options-editor-card" id="structuredEditorCard">
                         <h3 style="margin: 0 0 12px 0; font-size: 16px;">Correct Answer Key</h3>
                         
                         <!-- Answer Tabs -->
@@ -1071,8 +1034,6 @@ const statStructured = document.getElementById("statStructured");
 
 // Active Editor elements
 const activeQNumTitle = document.getElementById("activeQNumTitle");
-const toggleMcqBtn = document.getElementById("toggleMcqBtn");
-const toggleStructuredBtn = document.getElementById("toggleStructuredBtn");
 
 // Tabs
 const tabPreviewBtn = document.getElementById("tabPreviewBtn");
@@ -1084,10 +1045,6 @@ const paneCode = document.getElementById("paneCode");
 const htmlPreview = document.getElementById("htmlPreview");
 const htmlCodeEditor = document.getElementById("htmlCodeEditor");
 
-// Options cards
-const optionsEditorCard = document.getElementById("optionsEditorCard");
-const optionsListContainer = document.getElementById("optionsListContainer");
-const addOptionBtn = document.getElementById("addOptionBtn");
 const structuredEditorCard = document.getElementById("structuredEditorCard");
 const tabAnswerPreviewBtn = document.getElementById("tabAnswerPreviewBtn");
 const tabAnswerCodeBtn = document.getElementById("tabAnswerCodeBtn");
@@ -1340,8 +1297,6 @@ function renderSidebar() {
     
     // Update stats
     statTotal.textContent = allQs.length;
-    statMcq.textContent = currentData.mcq_questions.length;
-    statStructured.textContent = currentData.structured_questions.length;
     
     questionList.innerHTML = '';
     
@@ -1377,7 +1332,6 @@ function renderSidebar() {
         qitem.innerHTML = `
             <div class="question-item-left">
                 <span class="qnum">Q${qnum}</span>
-                <span class="badge ${item.type}">${item.type === 'mcq' ? 'MCQ' : 'Open'}</span>
             </div>
             <div class="badge-icons">
                 ${hasImage ? '<span class="badge-icon" title="Contains Image">🖼️</span>' : ''}
@@ -1387,6 +1341,30 @@ function renderSidebar() {
         
         questionList.appendChild(qitem);
     });
+}
+
+function getEditorStemHtml(q, type) {
+    let stemHtml = q.stem_html || '';
+    if (type === 'mcq' && q.options && q.options.length > 0) {
+        const letters = ["A", "B", "C", "D", "E", "F"];
+        let optionsHtml = '';
+        
+        let trimmed = stemHtml.trim();
+        let needsBreak = true;
+        if (trimmed.endsWith('<br>') || trimmed.endsWith('<br/>') || trimmed.endsWith('<div><br></div>') || trimmed.endsWith('<p><br></p>')) {
+            needsBreak = false;
+        }
+        
+        if (needsBreak && trimmed.length > 0) {
+            optionsHtml += '\n<div><br></div>';
+        }
+        
+        q.options.forEach((opt) => {
+            optionsHtml += `\n<div>${opt}</div>`;
+        });
+        stemHtml += optionsHtml;
+    }
+    return stemHtml;
 }
 
 // Load Question into workspace
@@ -1411,42 +1389,22 @@ function loadQuestion(index, type) {
     // Update Header Title
     activeQNumTitle.textContent = `Question ${q.qnum}`;
     
-    // Set active type segmented buttons
-    if (type === 'mcq') {
-        toggleMcqBtn.classList.add("active");
-        toggleStructuredBtn.classList.remove("active");
-        
-        optionsEditorCard.style.display = "block";
-        structuredEditorCard.style.display = "none";
-        
-        // Render Options choices
-        renderMCQOptions(q);
-    } else {
-        toggleMcqBtn.classList.remove("active");
-        toggleStructuredBtn.classList.add("active");
-        
-        optionsEditorCard.style.display = "none";
-        structuredEditorCard.style.display = "block";
-        
-        // Render Structured correct answer
-        let ansText = "";
-        if (currentData.answers && currentData.answers[q.qnum]) {
-            const ansVal = currentData.answers[q.qnum];
-            if (typeof ansVal === 'string') ansText = ansVal;
-            else if (Array.isArray(ansVal)) {
-                // Convert token answers array to string
-                ansText = ansVal.map(t => t[0] === 'text' ? t[1] : `[${t[0]}]`).join(' ').trim();
-            }
+    // Load stem and inline options
+    let stemHtml = getEditorStemHtml(q, type);
+    htmlCodeEditor.value = stemHtml;
+    updateLivePreview(stemHtml);
+    
+    // Load answer visual/HTML editor for all questions
+    let ansText = "";
+    if (currentData.answers && currentData.answers[q.qnum]) {
+        const ansVal = currentData.answers[q.qnum];
+        if (typeof ansVal === 'string') ansText = ansVal;
+        else if (Array.isArray(ansVal)) {
+            ansText = ansVal.map(t => t[0] === 'text' ? t[1] : `[${t[0]}]`).join(' ').trim();
         }
-        answerCodeEditor.value = ansText;
-        updateAnswerLivePreview(ansText);
     }
-    
-    // Set code editor value
-    htmlCodeEditor.value = q.stem_html || '';
-    
-    // Render live preview
-    updateLivePreview(q.stem_html);
+    answerCodeEditor.value = ansText;
+    updateAnswerLivePreview(ansText);
 }
 
 // Render live previews in the workspace HTML boxes
@@ -1470,38 +1428,107 @@ htmlPreview.addEventListener("input", () => {
 function saveActiveStemHtml(val) {
     const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
     const q = qList[activeQuestionIndex];
-    q.stem_html = val;
-}
-
-// Render options inputs for MCQ
-function renderMCQOptions(q) {
-    optionsListContainer.innerHTML = '';
     
-    if (!q.options) q.options = [];
-    
-    const letters = ["A", "B", "C", "D", "E", "F"];
-    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toUpperCase();
-    
-    q.options.forEach((opt, idx) => {
-        const letter = letters[idx] || String.fromCharCode(65 + idx);
-        const uppercaseLetter = letter;
-        const isChecked = (currentAnswer === letter);
+    if (activeQuestionType === 'mcq') {
+        let tempDiv = document.createElement("div");
+        tempDiv.innerHTML = val;
         
-        const optionRow = document.createElement("div");
-        optionRow.className = "option-row";
-        optionRow.innerHTML = `
-            <span class="option-letter">${uppercaseLetter}</span>
-            <input type="text" class="option-input" value="${escapeHtmlAttribute(opt)}" placeholder="Choice option description" oninput="updateMCQOptionText(${idx}, this.value)">
-            <input type="radio" class="option-radio" name="correctAnswerRadio" ${isChecked ? 'checked' : ''} onchange="selectCorrectMCQAnswer('${letter}')" title="Set as correct answer">
-            <div class="option-actions">
-                <button type="button" class="danger" style="padding: 6px 10px; font-size:12px;" onclick="deleteMCQOption(${idx})">✕</button>
-            </div>
-        `;
-        optionsListContainer.appendChild(optionRow);
-    });
-    
-    if (q.options.length === 0) {
-        optionsListContainer.innerHTML = '<p style="color:#94a3b8; font-style:italic; font-size:13px; text-align:center;">No choices defined. Click "Add Choice Option" to start.</p>';
+        function isBlockElement(el) {
+            if (!el || !el.tagName) return false;
+            const blocks = ['div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'table', 'blockquote', 'pre'];
+            return blocks.includes(el.tagName.toLowerCase());
+        }
+
+        // 1. Group raw text nodes and inline elements at the root level separated by <br> into <div> blocks
+        const children = Array.from(tempDiv.childNodes);
+        let currentGroup = [];
+        
+        function flushGroup() {
+            if (currentGroup.length > 0) {
+                const div = document.createElement("div");
+                tempDiv.insertBefore(div, currentGroup[0]);
+                currentGroup.forEach(node => {
+                    div.appendChild(node);
+                });
+                currentGroup = [];
+            }
+        }
+        
+        children.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const tagName = node.tagName.toLowerCase();
+                if (tagName === 'br') {
+                    node.remove();
+                    flushGroup();
+                } else if (isBlockElement(node)) {
+                    flushGroup();
+                } else {
+                    currentGroup.push(node);
+                }
+            } else if (node.nodeType === Node.TEXT_NODE) {
+                currentGroup.push(node);
+            }
+        });
+        flushGroup();
+
+        // 2. Clean up trailing empty elements (like a trailing empty <div><br></div> or <div></div>)
+        while (tempDiv.lastElementChild) {
+            let text = tempDiv.lastElementChild.textContent.trim();
+            let hasImg = tempDiv.lastElementChild.querySelector('img');
+            if (!text && !hasImg) {
+                tempDiv.lastElementChild.remove();
+            } else {
+                break;
+            }
+        }
+
+        // 3. Scan backwards to extract options that start with a choice letter (A-F followed by a dot/parenthesis)
+        const choicePattern = /^\s*([A-F])(?:[\.\)]\s*|(?:\t|\xa0{2,}|\s{2,}))(.*)/i;
+        let options = [];
+        let child = tempDiv.lastElementChild;
+        while (child) {
+            let text = child.textContent || child.innerText || '';
+            let trimmedText = text.trim();
+            let match = text.match(choicePattern);
+            if (match) {
+                let letter = match[1].toUpperCase();
+                let innerHtml = child.innerHTML.trim();
+                
+                options.unshift({ element: child, text: innerHtml });
+                if (letter === 'A') {
+                    break; // Stop immediately once we've reached Option A
+                }
+                child = child.previousElementSibling;
+            } else if (!trimmedText && !child.querySelector('img')) {
+                // If it is a blank line/spacing element between options, skip/remove it
+                let prev = child.previousElementSibling;
+                child.remove();
+                child = prev;
+            } else {
+                break;
+            }
+        }
+
+        // 4. Save options and update stem
+        if (options.length > 0) {
+            q.options = options.map(o => o.text);
+            options.forEach(o => o.element.remove());
+            q.stem_html = tempDiv.innerHTML.trim();
+        } else {
+            // No options inside: switch MCQ to Structured/Open-ended
+            q.stem_html = val;
+            delete q.options;
+            const mcqIndex = currentData.mcq_questions.indexOf(q);
+            if (mcqIndex > -1) {
+                currentData.mcq_questions.splice(mcqIndex, 1);
+                currentData.structured_questions.push(q);
+                activeQuestionType = 'structured';
+                activeQuestionIndex = currentData.structured_questions.length - 1;
+                renderSidebar();
+            }
+        }
+    } else {
+        q.stem_html = val;
     }
 }
 
@@ -1511,10 +1538,6 @@ function escapeHtmlAttribute(str) {
 }
 
 // Global functions for inline option event handling
-window.updateMCQOptionText = function(idx, val) {
-    const q = currentData.mcq_questions[activeQuestionIndex];
-    q.options[idx] = val;
-};
 
 window.selectCorrectMCQAnswer = function(letter) {
     const q = currentData.mcq_questions[activeQuestionIndex];
@@ -1522,39 +1545,6 @@ window.selectCorrectMCQAnswer = function(letter) {
     currentData.answers[q.qnum] = letter.toUpperCase();
     renderSidebar(); // Update checkmark badge in sidebar
 };
-
-window.deleteMCQOption = function(idx) {
-    const q = currentData.mcq_questions[activeQuestionIndex];
-    q.options.splice(idx, 1);
-    
-    // Check if correct answer deleted
-    const letters = ["A", "B", "C", "D", "E", "F"];
-    const deletedLetter = letters[idx];
-    const currentAnswer = getAnswerText(currentData.answers[q.qnum]).toUpperCase();
-    if (currentAnswer === deletedLetter) {
-        delete currentData.answers[q.qnum];
-    } else if (currentAnswer) {
-        // Adjust indices
-        const originalIndex = letters.indexOf(currentAnswer);
-        if (originalIndex > idx) {
-            currentData.answers[q.qnum] = letters[originalIndex - 1];
-        }
-    }
-    
-    renderMCQOptions(q);
-    renderSidebar();
-};
-
-addOptionBtn.addEventListener("click", () => {
-    const q = currentData.mcq_questions[activeQuestionIndex];
-    if (!q.options) q.options = [];
-    
-    const nextIdx = q.options.length;
-    const nextLetter = String.fromCharCode(65 + nextIdx); // A, B, C...
-    q.options.push(`Option ${nextLetter}`);
-    
-    renderMCQOptions(q);
-});
 
 // Answer HTML Editor live synchronization listener
 answerCodeEditor.addEventListener("input", (e) => {
@@ -1573,50 +1563,19 @@ function saveActiveAnswerHtml(val) {
     const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
     const q = qList[activeQuestionIndex];
     if (!currentData.answers) currentData.answers = {};
-    currentData.answers[q.qnum] = val;
+    
+    if (activeQuestionType === 'mcq') {
+        let cleanVal = val.replace(/<[^>]*>/g, '').trim().toUpperCase();
+        if (cleanVal.length > 1) cleanVal = cleanVal.charAt(0);
+        currentData.answers[q.qnum] = cleanVal;
+    } else {
+        currentData.answers[q.qnum] = val;
+    }
     renderSidebar(); // Update checkmark badge in sidebar
 }
 
 function updateAnswerLivePreview(htmlString) {
     answerPreview.innerHTML = resolveHtmlPreview(htmlString, currentData.job_id);
-}
-
-// Question Type switching
-toggleMcqBtn.addEventListener("click", () => {
-    switchQuestionType('mcq');
-});
-
-toggleStructuredBtn.addEventListener("click", () => {
-    switchQuestionType('structured');
-});
-
-function switchQuestionType(targetType) {
-    if (activeQuestionType === targetType) return;
-    
-    const sourceList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
-    const targetList = targetType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
-    
-    const qObj = sourceList.splice(activeQuestionIndex, 1)[0];
-    
-    // Adjust data model properties
-    if (targetType === 'mcq') {
-        qObj.options = qObj.options || ["Option A", "Option B", "Option C", "Option D"];
-        // Reset answer to A
-        if (!currentData.answers) currentData.answers = {};
-        currentData.answers[qObj.qnum] = 'A';
-    } else {
-        delete qObj.options;
-        // Keep answer key as text or clear
-        const ansVal = currentData.answers[qObj.qnum];
-        currentData.answers[qObj.qnum] = typeof ansVal === 'string' ? ansVal : '';
-    }
-    
-    targetList.push(qObj);
-    
-    // Select the newly relocated question
-    renderSidebar();
-    const newIdx = targetList.length - 1;
-    loadQuestion(newIdx, targetType);
 }
 
 // Add/Delete Questions
@@ -1678,18 +1637,19 @@ function switchTab(tabName) {
     const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
     const q = qList[activeQuestionIndex];
     
+    let stemHtml = getEditorStemHtml(q, activeQuestionType);
     if (tabName === 'Preview') {
         tabPreviewBtn.classList.add("active");
         panePreview.classList.add("active");
         
         // Sync Visual preview from latest code text
-        htmlPreview.innerHTML = resolveHtmlPreview(q.stem_html, currentData.job_id);
+        htmlPreview.innerHTML = resolveHtmlPreview(stemHtml, currentData.job_id);
     } else {
         tabCodeBtn.classList.add("active");
         paneCode.classList.add("active");
         
         // Sync HTML code from latest Visual innerHTML
-        htmlCodeEditor.value = q.stem_html || '';
+        htmlCodeEditor.value = stemHtml;
         htmlCodeEditor.focus();
     }
 }
@@ -1843,27 +1803,29 @@ document.getElementById('cropConfirmBtn').addEventListener('click', async () => 
         });
         const result = await resp.json();
         if (result.new_filename) {
-            // Update the filename reference in active question stem HTML
+            // Update the filename reference in active question stem HTML and options list
             const qList = activeQuestionType === 'mcq' ? currentData.mcq_questions : currentData.structured_questions;
             const q = qList[activeQuestionIndex];
             
-            // Globally replace the old filename with the cropped filename in stem HTML
             if (q.stem_html) {
                 q.stem_html = q.stem_html.replaceAll(cropState.filename, result.new_filename);
-                htmlCodeEditor.value = q.stem_html;
+            }
+            if (q.options) {
+                q.options = q.options.map(opt => opt.replaceAll(cropState.filename, result.new_filename));
             }
 
             // Globally replace the old filename with the cropped filename in answer HTML
-            if (activeQuestionType === 'structured' && currentData.answers && currentData.answers[q.qnum]) {
+            if (currentData.answers && currentData.answers[q.qnum]) {
                 currentData.answers[q.qnum] = currentData.answers[q.qnum].replaceAll(cropState.filename, result.new_filename);
                 answerCodeEditor.value = currentData.answers[q.qnum];
             }
             
             // Re-render previews
-            updateLivePreview(q.stem_html);
-            if (activeQuestionType === 'structured') {
-                updateAnswerLivePreview(currentData.answers[q.qnum] || '');
-            }
+            let stemHtml = getEditorStemHtml(q, activeQuestionType);
+            htmlCodeEditor.value = stemHtml;
+            updateLivePreview(stemHtml);
+            
+            updateAnswerLivePreview(currentData.answers[q.qnum] || '');
         }
     } catch (err) {
         alert('Crop failed: ' + err.message);
@@ -1885,7 +1847,7 @@ confirmBtn.addEventListener("click", async function() {
             saveActiveStemHtml(cleaned);
         }
 
-        if (activeQuestionType === 'structured' && tabAnswerPreviewBtn.classList.contains("active")) {
+        if (tabAnswerPreviewBtn.classList.contains("active")) {
             const val = answerPreview.innerHTML;
             const cleaned = cleanHtmlPreview(val);
             saveActiveAnswerHtml(cleaned);

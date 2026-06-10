@@ -35,7 +35,47 @@ def parse_docx_to_data(input_docx, job_dir):
 
     # Regex Patterns
     question_regex = re.compile(r'^(\d+)(?:\s+(.*))?$', re.I)
-    option_regex = re.compile(r'^[A-D][\.\)]\s*(.*)')
+    option_regex = re.compile(r'^[A-F](?:[\.\)]\s*|(?:\t|\xa0{2,}|\s{2,}))(.*)', re.I)
+
+    def extract_mcq_options(tokens):
+        option_candidates = []
+        i = len(tokens) - 1
+        while i >= 0:
+            t = tokens[i]
+            if t[0] == "text":
+                val = t[1].strip()
+                if not val:
+                    i -= 1
+                    continue
+                opt_match = option_regex.match(val)
+                if opt_match:
+                    # The letter is the first non-whitespace character in the matched prefix
+                    prefix = opt_match.group(0).strip()
+                    letter = prefix[0].upper() if prefix else ""
+                    option_candidates.append((i, letter, t[1]))
+                    i -= 1
+                else:
+                    break
+            else:
+                break
+        
+        option_candidates.reverse()
+        
+        if len(option_candidates) >= 2:
+            expected_letters = ["A", "B", "C", "D", "E", "F"]
+            is_valid = True
+            for idx, cand in enumerate(option_candidates):
+                if idx >= len(expected_letters) or cand[1] != expected_letters[idx]:
+                    is_valid = False
+                    break
+            
+            if is_valid:
+                options_list = [cand[2] for cand in option_candidates]
+                indices_to_remove = set(cand[0] for cand in option_candidates)
+                new_tokens = [t for idx, t in enumerate(tokens) if idx not in indices_to_remove]
+                return options_list, new_tokens
+        
+        return None, tokens
 
     list_counters = {}
     
@@ -54,19 +94,27 @@ def parse_docx_to_data(input_docx, job_dir):
     def parse_paragraph(child):
         tokens = []
         for run in child.xpath("./w:r"):
-            # Use ./w:t (direct children only) to avoid picking up text
-            # from nested floating text boxes / shapes inside the run
-            text = "".join(node.text or "" for node in run.xpath("./w:t"))
+            run_parts = []
+            for node in run:
+                tag = node.tag
+                if tag.endswith('}t'):
+                    run_parts.append((node.text or "").replace('\t', '__TAB_PLACEHOLDER__'))
+                elif tag.endswith('}tab'):
+                    run_parts.append("__TAB_PLACEHOLDER__")
+            
+            text = "".join(run_parts)
             if not text:
                 continue
             is_sup = run.xpath(".//w:vertAlign[@w:val='superscript']")
             is_sub = run.xpath(".//w:vertAlign[@w:val='subscript']")
             is_bold = run.xpath(".//w:b")
             is_italic = run.xpath(".//w:i")
+            is_u = run.xpath(".//w:u")
             if is_sup: text = f"<sup>{text}</sup>"
             if is_sub: text = f"<sub>{text}</sub>"
             if is_bold: text = f"<strong>{text}</strong>"
             if is_italic: text = f"<em>{text}</em>"
+            if is_u: text = f"<u>{text}</u>"
             tokens.append(text)
             
         paragraph_text = "".join(tokens).strip()
@@ -94,8 +142,36 @@ def parse_docx_to_data(input_docx, job_dir):
         for row in child.xpath("./w:tr"):
             row_data = []
             for cell in row.xpath("./w:tc"):
-                cell_text = "".join(node.text or "" for node in cell.xpath(".//w:t")).strip()
-                row_data.append(cell_text)
+                cell_paragraphs = []
+                for p in cell.xpath(".//w:p"):
+                    tokens = []
+                    for run in p.xpath(".//w:r"):
+                        run_parts = []
+                        for node in run:
+                            tag = node.tag
+                            if tag.endswith('}t'):
+                                run_parts.append((node.text or "").replace('\t', '\xa0\xa0\xa0\xa0'))
+                            elif tag.endswith('}tab'):
+                                run_parts.append("\xa0\xa0\xa0\xa0")
+                        
+                        text = "".join(run_parts)
+                        if not text:
+                            continue
+                        is_sup = run.xpath(".//w:vertAlign[@w:val='superscript']")
+                        is_sub = run.xpath(".//w:vertAlign[@w:val='subscript']")
+                        is_bold = run.xpath(".//w:b")
+                        is_italic = run.xpath(".//w:i")
+                        is_u = run.xpath(".//w:u")
+                        
+                        if is_sup: text = f"<sup>{text}</sup>"
+                        if is_sub: text = f"<sub>{text}</sub>"
+                        if is_bold: text = f"<strong>{text}</strong>"
+                        if is_italic: text = f"<em>{text}</em>"
+                        if is_u: text = f"<u>{text}</u>"
+                        tokens.append(text)
+                    cell_paragraphs.append("".join(tokens).strip())
+                cell_html = "<br/>".join(cell_paragraphs).strip()
+                row_data.append(cell_html)
             table_data.append(row_data)
         return table_data
 
@@ -239,7 +315,6 @@ def parse_docx_to_data(input_docx, job_dir):
     
     current_qnum = None
     current_tokens = []
-    options = []
     
     reading_answers = False
     current_answer_q = None
@@ -259,7 +334,8 @@ def parse_docx_to_data(input_docx, job_dir):
                 current_answer_tokens.append(["table", value])
                 continue
             if item_type == "text":
-                text = value.replace('\xa0',' ').strip()
+                text = value.replace('\xa0',' ')
+                text = text.replace('__TAB_PLACEHOLDER__', '\xa0\xa0\xa0\xa0').strip()
                 amatch = re.match(r'^(\d+[a-zA-Z]*[ivxlcdm]*)\.?\s*(.*)', text, re.I)
                 if amatch:
                     if current_answer_q is not None:
@@ -291,8 +367,9 @@ def parse_docx_to_data(input_docx, job_dir):
             continue
 
         if item_type == "text":
-            text = value.replace('\xa0', ' ').replace('\t', ' ')
+            text = value.replace('\xa0', ' ')
             text = re.sub(r'\s+', ' ', text).strip()
+            text = text.replace('__TAB_PLACEHOLDER__', '\xa0\xa0\xa0\xa0')
 
             if text.upper() == "ANSWERS":
                 reading_answers = True
@@ -308,8 +385,9 @@ def parse_docx_to_data(input_docx, job_dir):
                 if current_qnum is not None:
                     while current_tokens and current_tokens[-1][0] == "text" and current_tokens[-1][1] == "":
                         current_tokens.pop()
-                    if options:
-                        mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
+                    options_list, new_tokens = extract_mcq_options(current_tokens)
+                    if options_list:
+                        mcq_questions.append({"qnum": current_qnum, "tokens": new_tokens, "options": options_list})
                     else:
                         structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
                 
@@ -317,12 +395,6 @@ def parse_docx_to_data(input_docx, job_dir):
                 current_tokens = []
                 if qmatch.group(2):
                     current_tokens.append(["text", qmatch.group(2), align_val])
-                options = []
-                continue
-
-            opt = option_regex.match(text)
-            if opt:
-                options.append(opt.group(1))
                 continue
 
             current_tokens.append(["text", text, align_val])
@@ -337,8 +409,9 @@ def parse_docx_to_data(input_docx, job_dir):
     if current_qnum is not None:
         while current_tokens and current_tokens[-1][0] == "text" and current_tokens[-1][1] == "":
             current_tokens.pop()
-        if options:
-            mcq_questions.append({"qnum": current_qnum, "tokens": current_tokens, "options": options})
+        options_list, new_tokens = extract_mcq_options(current_tokens)
+        if options_list:
+            mcq_questions.append({"qnum": current_qnum, "tokens": new_tokens, "options": options_list})
         else:
             structured_questions.append({"qnum": current_qnum, "tokens": current_tokens})
 
@@ -425,6 +498,7 @@ def generate_qti_from_data(data, job_dir):
                     for cell in row:
 
                         safe = saxutils.escape(cell)
+                        safe = safe.replace("&lt;", "<").replace("&gt;", ">")
 
                         html += f"<td>{safe}</td>"
 
@@ -528,6 +602,7 @@ xsi:schemaLocation="http://www.imsglobal.org/xsd/imsqti_v2p1 http://www.imsgloba
                 break
 
             safe = saxutils.escape(opt)
+            safe = safe.replace("&lt;", "<").replace("&gt;", ">")
 
             xml += f'<simpleChoice identifier="{letters[i]}">{safe}</simpleChoice>\n'
 
